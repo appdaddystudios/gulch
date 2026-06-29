@@ -35,7 +35,7 @@ export const eventFieldDataSchema = z
     "end-date-time": optionalString,
     "custom-time-description": optionalString,
     location: optionalString,
-    "external-link": requiredString,
+    "external-link": optionalString,
     "show-tickets-required-tag": z.boolean().nullable().optional()
   });
 
