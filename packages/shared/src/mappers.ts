@@ -1,0 +1,63 @@
+import type { Database } from "@gulch/db";
+
+import {
+  parseWebflowItem,
+  webflowEventItemSchema,
+  webflowLocationItemSchema,
+  webflowShowItemSchema
+} from "./webflow-schemas";
+
+export type LocationInsert = Database["public"]["Tables"]["locations"]["Insert"];
+export type EventInsert = Database["public"]["Tables"]["events"]["Insert"];
+export type ShowInsert = Database["public"]["Tables"]["shows"]["Insert"];
+
+export function mapLocation(raw: unknown): LocationInsert {
+  const item = parseWebflowItem(webflowLocationItemSchema, raw).data;
+  const fields = item.fieldData;
+
+  return {
+    webflow_item_id: item.id,
+    name: fields.name,
+    slug: fields.slug,
+    name_address: fields["plain-text-name-address"] ?? null,
+    google_maps_url: fields["google-maps-link-url"] ?? null,
+    neighborhood: fields["neighborhood-optional"] ?? null,
+    parking: fields["parking-optional"] ?? null,
+    hide_from_list: fields["hide-from-locations-list"] ?? false,
+    webflow_last_updated: item.lastUpdated
+  };
+}
+
+export function mapEvent(raw: unknown): EventInsert {
+  const item = parseWebflowItem(webflowEventItemSchema, raw).data;
+  const fields = item.fieldData;
+
+  return {
+    webflow_item_id: item.id,
+    name: fields.name,
+    slug: fields.slug,
+    start_at: fields["start-date-time"],
+    end_at: fields["end-date-time"] ?? null,
+    custom_time_description: fields["custom-time-description"] ?? null,
+    location_id: fields.location ?? null,
+    external_link: fields["external-link"],
+    tickets_required: fields["show-tickets-required-tag"] ?? false,
+    webflow_last_updated: item.lastUpdated
+  };
+}
+
+export function mapShow(raw: unknown): ShowInsert {
+  const item = parseWebflowItem(webflowShowItemSchema, raw).data;
+  const fields = item.fieldData;
+
+  return {
+    webflow_item_id: item.id,
+    name: fields.name,
+    slug: fields.slug,
+    start_date: fields["start-date"] ?? null,
+    end_date: fields["end-date"] ?? null,
+    location_id: fields.location ?? null,
+    external_link: fields["external-link"] ?? null,
+    webflow_last_updated: item.lastUpdated
+  };
+}
