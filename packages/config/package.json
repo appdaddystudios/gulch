@@ -1,0 +1,21 @@
+{
+  "name": "@gulch/config",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./eslint": "./eslint/base.js",
+    "./tailwind": "./tailwind/theme.css"
+  },
+  "files": [
+    "eslint",
+    "tsconfig",
+    "tailwind"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "build": "true"
+  }
+}
