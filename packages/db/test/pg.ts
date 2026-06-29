@@ -30,6 +30,16 @@ const withPostgresPath = {
   PATH: postgresBinHasInitdb ? `${postgresBin}:${process.env.PATH ?? ""}` : process.env.PATH
 };
 
+const commandExistsOnPath = (command: string): boolean => {
+  const pathValue = withPostgresPath.PATH;
+
+  if (!pathValue) {
+    return false;
+  }
+
+  return pathValue.split(path.delimiter).some((dir) => existsSync(path.join(dir, command)));
+};
+
 const randomPort = (): number => 20_000 + Math.floor(Math.random() * 20_000);
 
 const quoteIdentifier = (value: string): string => `"${value.replaceAll('"', '""')}"`;
@@ -129,6 +139,10 @@ export const setupTestPostgres = async (): Promise<TestPostgres> => {
       connectionString,
       teardown: async () => undefined
     };
+  }
+
+  if (!commandExistsOnPath("initdb")) {
+    throw new Error("No DATABASE_URL set and no local Postgres (initdb) found. Set DATABASE_URL or install postgresql.");
   }
 
   const dataDir = await mkdtemp(path.join(tmpdir(), "gulch-db-"));

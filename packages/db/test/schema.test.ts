@@ -16,8 +16,13 @@ describe("v1 mirror schema", () => {
   });
 
   afterAll(async () => {
-    await client.end();
-    await postgres.teardown();
+    if (client) {
+      await client.end();
+    }
+
+    if (postgres) {
+      await postgres.teardown();
+    }
   });
 
   it("creates the locations, events, and shows tables with expected columns", async () => {

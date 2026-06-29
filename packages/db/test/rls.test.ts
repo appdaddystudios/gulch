@@ -27,8 +27,13 @@ describe("v1 mirror RLS", () => {
   });
 
   afterAll(async () => {
-    await client.end();
-    await postgres.teardown();
+    if (client) {
+      await client.end();
+    }
+
+    if (postgres) {
+      await postgres.teardown();
+    }
   });
 
   it("allows anon to select and denies anon writes", async () => {
