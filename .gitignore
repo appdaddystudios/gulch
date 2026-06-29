@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 .DS_Store
 .turbo
 coverage
+
+# Stray bun lockfile (this is a pnpm workspace)
+bun.lock
