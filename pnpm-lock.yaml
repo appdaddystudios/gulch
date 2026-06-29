@@ -69,6 +69,31 @@ importers:
         specifier: ^3.2.4
         version: 3.2.6(@types/node@26.0.1)
 
+  packages/shared:
+    dependencies:
+      '@gulch/db':
+        specifier: workspace:*
+        version: link:../db
+      zod:
+        specifier: ^3.25.67
+        version: 3.25.76
+    devDependencies:
+      '@gulch/config':
+        specifier: workspace:*
+        version: link:../config
+      '@vitest/coverage-v8':
+        specifier: ^3.2.4
+        version: 3.2.6(vitest@3.2.6(@types/node@26.0.1))
+      eslint:
+        specifier: ^9.30.0
+        version: 9.39.4
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(@types/node@26.0.1)
+
 packages:
 
   '@ampproject/remapping@2.3.0':
