@@ -37,7 +37,7 @@ export function createWebflowClient(options: WebflowClientOptions): WebflowClien
   const maxRetries = options.maxRetries ?? defaultRetryCount;
 
   const fetchPage = async (collectionId: string, offset: number): Promise<z.infer<typeof webflowPageSchema>> => {
-    const url = new URL(`${baseUrl}/collections/${collectionId}/items`);
+    const url = new URL(`${baseUrl}/collections/${collectionId}/items/live`);
     url.searchParams.set("offset", String(offset));
     url.searchParams.set("limit", String(pageLimit));
 
@@ -64,7 +64,7 @@ export function createWebflowClient(options: WebflowClientOptions): WebflowClien
 
       while (offset < total) {
         const page = await fetchPage(collectionId, offset);
-        items.push(...page.items);
+        items.push(...page.items.filter(isPublicItem));
         total = page.pagination.total;
         offset += page.pagination.limit;
       }
@@ -110,4 +110,13 @@ async function fetchWithRetry(
 async function bodySnippet(response: Response): Promise<string> {
   const text = await response.text();
   return text.slice(0, 300);
+}
+
+function isPublicItem(item: unknown): boolean {
+  if (typeof item !== "object" || item === null) {
+    return true;
+  }
+
+  const envelope = item as { readonly isArchived?: unknown; readonly isDraft?: unknown };
+  return envelope.isArchived !== true && envelope.isDraft !== true;
 }

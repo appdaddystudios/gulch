@@ -30,8 +30,34 @@ describe("createWebflowClient", () => {
       { id: "third" }
     ]);
     expect(seenUrls).toHaveLength(2);
-    expect(seenUrls[0]).toContain("/v2/collections/collection-1/items");
+    expect(seenUrls[0]).toContain("/v2/collections/collection-1/items/live");
     expect(new URL(seenUrls[1] ?? "").searchParams.get("offset")).toBe("100");
+  });
+
+  it("filters archived and draft items even when returned by Webflow", async () => {
+    const fetch: FetchLike = async (input) => {
+      expect(new URL(String(input)).pathname).toBe("/v2/collections/collection-1/items/live");
+
+      return jsonResponse({
+        items: [
+          { id: "normal", isArchived: false, isDraft: false },
+          { id: "archived", isArchived: true, isDraft: false },
+          { id: "draft", isArchived: false, isDraft: true },
+          { id: "unknown-envelope" },
+          null,
+          "primitive-item"
+        ],
+        pagination: { limit: 100, offset: 0, total: 4 }
+      });
+    };
+    const client = createWebflowClient({ token: "wf-token", fetch });
+
+    await expect(client.fetchAllItems("collection-1")).resolves.toEqual([
+      { id: "normal", isArchived: false, isDraft: false },
+      { id: "unknown-envelope" },
+      null,
+      "primitive-item"
+    ]);
   });
 
   it("throws a clear status and body snippet for non-200 responses", async () => {
