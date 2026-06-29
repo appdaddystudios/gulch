@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./eslint": "./eslint/base.js",
+    "./tsconfig/base.json": "./tsconfig/base.json",
     "./tailwind": "./tailwind/theme.css"
   },
   "files": [
