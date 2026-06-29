@@ -15,6 +15,8 @@ const postgresBinHasInitdb = existsSync(path.join(postgresBin, "initdb"));
 const migrationPath = path.join(
   import.meta.dirname,
   "..",
+  "..",
+  "..",
   "supabase",
   "migrations",
   "20260629000001_init_v1_mirror.sql"
