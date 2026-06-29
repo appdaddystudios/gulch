@@ -1,0 +1,30 @@
+{
+  "name": "@gulch/pipeline",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "gulch-seed": "./dist/cli.js"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "build": "true"
+  },
+  "dependencies": {
+    "@gulch/db": "workspace:*",
+    "@gulch/shared": "workspace:*",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@gulch/config": "workspace:*",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.30.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
