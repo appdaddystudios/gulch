@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getEventDetail,
   groupEventsByWeek,
+  listEventsByIds,
   listUpcomingEvents,
   type EventListItem,
 } from "./events";
@@ -15,6 +16,7 @@ const makeBuilder = (result: QueryResult) => {
     "select",
     "gte",
     "eq",
+    "in",
     "order",
     "limit",
     "maybeSingle",
@@ -145,6 +147,32 @@ describe("getEventDetail", () => {
     await expect(
       getEventDetail(makeClient({ data: null, error }), "evt-1"),
     ).rejects.toThrow("boom");
+  });
+});
+
+describe("listEventsByIds", () => {
+  it("returns an empty array without querying when ids is empty", async () => {
+    const client = {
+      from: () => {
+        throw new Error("should not query");
+      },
+    } as never;
+    await expect(listEventsByIds(client, [])).resolves.toEqual([]);
+  });
+
+  it("maps matched rows", async () => {
+    const result = await listEventsByIds(
+      makeClient({ data: [baseRow], error: null }),
+      ["evt-1"],
+    );
+    expect(result[0]?.id).toBe("evt-1");
+  });
+
+  it("throws when Supabase returns an error", async () => {
+    const error = new Error("rls denied");
+    await expect(
+      listEventsByIds(makeClient({ data: null, error }), ["evt-1"]),
+    ).rejects.toThrow("rls denied");
   });
 });
 

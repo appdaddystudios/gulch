@@ -1,12 +1,19 @@
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, SectionList, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  SectionList,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { EmptyState } from "../../components/EmptyState";
 import { EventCard } from "../../components/EventCard";
 import { Header } from "../../components/Header";
 import { SearchBar } from "../../components/SearchBar";
+import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import {
   groupEventsByWeek,
@@ -71,6 +78,8 @@ function Body({
   readonly onPressEvent: (event: EventListItem) => void;
   readonly hasSearch: boolean;
 }) {
+  const { isSaved, toggle } = useSavedEvents();
+
   if (state.status === "missing-client") {
     return (
       <Centered>
@@ -119,7 +128,12 @@ function Body({
       sections={sections as EventWeekSection[]}
       keyExtractor={(item) => item.id}
       renderItem={({ item }) => (
-        <EventCard event={item} onPress={() => onPressEvent(item)} />
+        <EventCard
+          event={item}
+          onPress={() => onPressEvent(item)}
+          saved={isSaved(item.id)}
+          onToggleSave={() => toggle(item.id)}
+        />
       )}
       renderSectionHeader={({ section }) => (
         <View style={styles.sectionHeader}>

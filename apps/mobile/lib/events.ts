@@ -114,6 +114,28 @@ export const listUpcomingEvents = async (
   return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
 };
 
+// Events matching a set of ids (for the saved/lineup list), soonest first.
+export const listEventsByIds = async (
+  client: DbClient,
+  ids: readonly string[],
+): Promise<readonly EventListItem[]> => {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await client
+    .from("events")
+    .select(EVENT_SELECT)
+    .in("webflow_item_id", ids as string[])
+    .order("start_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
+};
+
 export type EventWeekSection = {
   readonly key: string;
   readonly title: string;

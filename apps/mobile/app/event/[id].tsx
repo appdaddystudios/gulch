@@ -25,6 +25,7 @@ import {
   TicketIcon,
 } from "../../components/icons";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
+import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { getEventDetail, type EventDetail } from "../../lib/events";
 import { formatEventDateTime } from "../../lib/format";
 import { color, font, radius, space, type as typePreset } from "../../theme";
@@ -92,6 +93,7 @@ function Content({
   readonly state: QueryState<EventDetail | null>;
 }) {
   const insets = useSafeAreaInsets();
+  const { isSaved, toggle } = useSavedEvents();
 
   if (state.status === "loading") {
     return (
@@ -194,7 +196,6 @@ function Content({
         </View>
       </ScrollView>
 
-      {/* TODO: wire Save-to-Lineup once the lineup/save feature lands. */}
       <View
         style={[
           styles.stickyButtons,
@@ -202,15 +203,23 @@ function Content({
         ]}
       >
         <Pressable
-          accessibilityLabel="Save to Your Lineup"
+          accessibilityLabel={
+            isSaved(event.id)
+              ? "Remove from Your Lineup"
+              : "Save to Your Lineup"
+          }
           accessibilityRole="button"
+          accessibilityState={{ selected: isSaved(event.id) }}
+          onPress={() => toggle(event.id)}
           style={({ pressed }) => [
             styles.saveButton,
             pressed ? styles.saved : null,
           ]}
         >
           <BookmarkIcon size={16} color={color.oreo} />
-          <Text style={styles.saveLabel}>Save to Your Lineup</Text>
+          <Text style={styles.saveLabel}>
+            {isSaved(event.id) ? "Saved to Your Lineup" : "Save to Your Lineup"}
+          </Text>
         </Pressable>
       </View>
     </View>
