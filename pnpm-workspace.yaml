@@ -2,9 +2,11 @@ packages:
   - "apps/*"
   - "packages/*"
 allowBuilds:
-  "@sentry/cli": true
+  '@sentry/cli': true
   esbuild: true
   sharp: true
   unrs-resolver: true
-overrides:
-  enhanced-resolve: 5.21.6
+minimumReleaseAgeExclude:
+  - '@posthog/core@1.38.1'
+  - '@posthog/types@1.392.0'
+  - posthog-react-native@4.53.2
