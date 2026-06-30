@@ -12,7 +12,10 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gulch.mobile"
+      "bundleIdentifier": "com.gulch.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.gulch.mobile"
@@ -20,7 +23,12 @@
     "extra": {
       "supabaseUrl": "$EXPO_PUBLIC_SUPABASE_URL",
       "sentryDsn": "$EXPO_PUBLIC_SENTRY_DSN",
-      "posthogHost": "$EXPO_PUBLIC_POSTHOG_HOST"
-    }
+      "posthogHost": "$EXPO_PUBLIC_POSTHOG_HOST",
+      "router": {},
+      "eas": {
+        "projectId": "df8b221c-aaee-49c8-994c-f4f85432f281"
+      }
+    },
+    "owner": "carlhiggins"
   }
 }
