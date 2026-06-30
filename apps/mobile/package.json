@@ -14,11 +14,14 @@
     "export": "EXPO_NO_DOTENV=1 expo export -p ios --output-dir /tmp/gulch-mobile-export"
   },
   "dependencies": {
+    "@expo-google-fonts/ubuntu": "^0.4.1",
     "@gulch/db": "workspace:*",
     "@sentry/react-native": "^8.16.0",
     "@supabase/supabase-js": "^2.50.3",
     "expo": "~56.0.12",
     "expo-constants": "~56.0.18",
+    "expo-font": "~56.0.7",
+    "expo-linear-gradient": "~56.0.4",
     "expo-linking": "~56.0.14",
     "expo-router": "~56.2.11",
     "expo-status-bar": "~56.0.4",
@@ -27,12 +30,13 @@
     "react-native": "0.85.3",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
+    "react-native-svg": "15.15.4",
     "react-native-url-polyfill": "^3.0.0",
     "zod": "^3.25.67"
   },
   "devDependencies": {
-    "@react-native/metro-config": "0.85.3",
     "@gulch/config": "workspace:*",
+    "@react-native/metro-config": "0.85.3",
     "@types/react": "~19.2.2",
     "@vitest/coverage-v8": "^3.2.4",
     "typescript": "~6.0.3",

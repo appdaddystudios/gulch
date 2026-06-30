@@ -147,3 +147,4 @@ coverage
 
 # Stray bun lockfile (this is a pnpm workspace)
 bun.lock
+Covik Sans/**/*
