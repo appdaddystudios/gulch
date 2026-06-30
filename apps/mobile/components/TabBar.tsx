@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     width: 52,
   },
   label: {
-    ...typePreset.label10Medium,
+    ...typePreset.tabLabel,
     textAlign: "center",
   },
 });

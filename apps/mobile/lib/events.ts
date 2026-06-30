@@ -16,9 +16,16 @@ export type EventListItem = {
   readonly locationName: string | null;
 };
 
+export type EventDetail = EventListItem & {
+  readonly customTimeDescription: string | null;
+};
+
 // PostgREST select used by every events query in the app.
 export const EVENT_SELECT =
   "webflow_item_id, name, start_at, end_at, image_url, image_status, tickets_required, external_link, locations(name), event_organizers(organizers(name))";
+
+// Detail view also needs the free-text time override.
+export const EVENT_DETAIL_SELECT = `${EVENT_SELECT}, custom_time_description`;
 
 const namedSchema = z.object({ name: z.string() });
 
@@ -103,4 +110,33 @@ export const listUpcomingEvents = async (
   }
 
   return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
+};
+
+const rawEventDetailSchema = rawEventSchema.extend({
+  custom_time_description: z.string().nullable(),
+});
+
+type RawEventDetail = z.infer<typeof rawEventDetailSchema>;
+
+export const toEventDetail = (raw: RawEventDetail): EventDetail => ({
+  ...toEventListItem(raw),
+  customTimeDescription: raw.custom_time_description,
+});
+
+// Single event by its Webflow item id (null when not found).
+export const getEventDetail = async (
+  client: DbClient,
+  id: string,
+): Promise<EventDetail | null> => {
+  const { data, error } = await client
+    .from("events")
+    .select(EVENT_DETAIL_SELECT)
+    .eq("webflow_item_id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ? toEventDetail(rawEventDetailSchema.parse(data)) : null;
 };

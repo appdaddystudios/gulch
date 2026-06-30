@@ -1,12 +1,7 @@
+import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Linking,
-  StyleSheet,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 
 import { EmptyState } from "../../components/EmptyState";
 import { EventCard } from "../../components/EventCard";
@@ -25,6 +20,7 @@ const matchesQuery = (event: EventListItem, query: string): boolean =>
     .some((value) => value.toLowerCase().includes(query));
 
 export default function CalendarScreen() {
+  const router = useRouter();
   const client = useDbClient();
   const loader = useCallback(loadEvents, []);
   const { state } = useQuery(client, loader);
@@ -39,9 +35,7 @@ export default function CalendarScreen() {
   }, [events, search]);
 
   const openEvent = (event: EventListItem) => {
-    if (event.externalLink) {
-      void Linking.openURL(event.externalLink);
-    }
+    router.push(`/event/${event.id}`);
   };
 
   return (

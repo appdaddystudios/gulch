@@ -2,25 +2,42 @@ import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { CheckVerifiedIcon } from "./icons";
-import { color, radius, space, type as typePreset } from "../theme";
+import { color, font, radius, space, type as typePreset } from "../theme";
 
 type BadgeVariant = "editorsPick" | "solid";
+type BadgeSize = "sm" | "lg";
 
 type BadgeProps = {
   readonly label: string;
   readonly variant?: BadgeVariant;
+  readonly size?: BadgeSize;
   readonly icon?: ReactNode;
 };
 
-export function Badge({ label, variant = "editorsPick", icon }: BadgeProps) {
+export function Badge({
+  label,
+  variant = "editorsPick",
+  size = "sm",
+  icon,
+}: BadgeProps) {
   const isEditorsPick = variant === "editorsPick";
+  const isLarge = size === "lg";
   const leadingIcon =
-    icon ?? (isEditorsPick ? <CheckVerifiedIcon size={12} color={color.gulchGreen} /> : null);
+    icon ??
+    (isEditorsPick ? (
+      <CheckVerifiedIcon size={isLarge ? 16 : 12} color={color.gulchGreen} />
+    ) : null);
 
   return (
-    <View style={[styles.base, isEditorsPick ? styles.editorsPick : styles.solid]}>
+    <View
+      style={[
+        styles.base,
+        isLarge ? styles.large : styles.small,
+        isEditorsPick ? styles.editorsPick : styles.solid,
+      ]}
+    >
       {leadingIcon ? <View style={styles.icon}>{leadingIcon}</View> : null}
-      <Text style={styles.label} numberOfLines={1}>
+      <Text style={isLarge ? styles.labelLarge : styles.labelSmall} numberOfLines={1}>
         {label}
       </Text>
     </View>
@@ -35,7 +52,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: space.xs,
     justifyContent: "center",
+  },
+  small: {
     paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+  },
+  large: {
+    height: 36,
+    paddingHorizontal: space.lg,
     paddingVertical: space.xs,
   },
   editorsPick: {
@@ -56,10 +80,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  label: {
+  labelSmall: {
     ...typePreset.label10Medium,
     color: color.white,
   },
+  labelLarge: {
+    color: color.white,
+    fontFamily: font.medium,
+    fontSize: 14,
+    lineHeight: 21,
+  },
 });
 
-export type { BadgeVariant };
+export type { BadgeVariant, BadgeSize };

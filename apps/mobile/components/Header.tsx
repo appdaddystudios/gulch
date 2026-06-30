@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -10,9 +11,10 @@ const SLOT_SIZE = 18;
 type HeaderProps = {
   readonly showBack?: boolean;
   readonly onBack?: () => void;
+  readonly rightAction?: ReactNode;
 };
 
-export function Header({ showBack = false, onBack }: HeaderProps) {
+export function Header({ showBack = false, onBack, rightAction }: HeaderProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -20,13 +22,17 @@ export function Header({ showBack = false, onBack }: HeaderProps) {
       <View style={styles.bar}>
         <View style={styles.slot}>
           {showBack ? (
-            <Pressable accessibilityLabel="Go back" accessibilityRole="button" onPress={onBack}>
+            <Pressable
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
+              onPress={onBack}
+            >
               <ArrowLeftIcon size={SLOT_SIZE} color={color.khakis} />
             </Pressable>
           ) : null}
         </View>
         <GulchLogo width={198} height={24} />
-        <View style={styles.slot} />
+        <View style={styles.slot}>{rightAction}</View>
       </View>
     </View>
   );

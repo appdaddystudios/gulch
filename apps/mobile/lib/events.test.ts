@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { listUpcomingEvents } from "./events";
+import { getEventDetail, listUpcomingEvents } from "./events";
 
 type QueryResult = { data: unknown; error: unknown };
 
 const makeBuilder = (result: QueryResult) => {
   const builder: Record<string, unknown> = {};
-  for (const method of ["select", "gte", "eq", "order", "limit"]) {
+  for (const method of [
+    "select",
+    "gte",
+    "eq",
+    "order",
+    "limit",
+    "maybeSingle",
+  ]) {
     builder[method] = () => builder;
   }
   builder.then = (resolve: (value: QueryResult) => unknown) => resolve(result);
@@ -99,5 +106,39 @@ describe("listUpcomingEvents", () => {
     await expect(
       listUpcomingEvents(makeClient({ data: null, error })),
     ).rejects.toThrow("rls denied");
+  });
+});
+
+describe("getEventDetail", () => {
+  it("maps a single event with its custom time description", async () => {
+    const row = {
+      ...baseRow,
+      custom_time_description: "Doors at 6, show at 7",
+    };
+
+    const result = await getEventDetail(
+      makeClient({ data: row, error: null }),
+      "evt-1",
+    );
+
+    expect(result).toMatchObject({
+      id: "evt-1",
+      organizerName: "GULCH Magazine",
+      locationName: "El Sótano",
+      customTimeDescription: "Doors at 6, show at 7",
+    });
+  });
+
+  it("returns null when the event is not found", async () => {
+    await expect(
+      getEventDetail(makeClient({ data: null, error: null }), "missing"),
+    ).resolves.toBeNull();
+  });
+
+  it("throws when Supabase returns an error", async () => {
+    const error = new Error("boom");
+    await expect(
+      getEventDetail(makeClient({ data: null, error }), "evt-1"),
+    ).rejects.toThrow("boom");
   });
 });

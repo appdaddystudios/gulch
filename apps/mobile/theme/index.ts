@@ -65,6 +65,8 @@ export const font = {
   regular: "Ubuntu_400Regular",
   medium: "Ubuntu_500Medium",
   bold: "Ubuntu_700Bold",
+  // Covik Sans is the brand display face; used for nav/tab labels.
+  display: "CovikSans-Semibold",
 } as const;
 
 // Text style presets. Names map to the Figma type styles.
@@ -114,6 +116,12 @@ export const type = {
   },
   label10Regular: {
     fontFamily: font.regular,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  // Tab bar labels — Covik Sans Semibold per the Figma nav spec.
+  tabLabel: {
+    fontFamily: font.display,
     fontSize: 10,
     lineHeight: 15,
   },

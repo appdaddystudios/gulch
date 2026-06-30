@@ -18,6 +18,7 @@ export default function RootLayout() {
     Ubuntu_400Regular,
     Ubuntu_500Medium,
     Ubuntu_700Bold,
+    "CovikSans-Semibold": require("../assets/fonts/CovikSans-Semibold.ttf"),
   });
 
   useEffect(() => {

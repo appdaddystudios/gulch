@@ -59,7 +59,7 @@ export default function HomeScreen() {
         key={event.id}
         title={event.name}
         subtitle={event.organizerName ?? "Event"}
-        onPress={() => openLink(event.externalLink)}
+        onPress={() => router.push(`/event/${event.id}`)}
       />
     ));
 

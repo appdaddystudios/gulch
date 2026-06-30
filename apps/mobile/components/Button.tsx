@@ -10,7 +10,7 @@ import {
 import { radius, space, type as typePreset, color } from "../theme";
 
 type ButtonSize = "s" | "m" | "l";
-type ButtonTone = "primary" | "beige" | "accent";
+type ButtonTone = "primary" | "beige" | "accent" | "outline" | "light" | "dark";
 
 type ButtonProps = {
   readonly label: string;
@@ -41,11 +41,18 @@ const sizeStyles: Record<
 
 const toneStyles: Record<
   ButtonTone,
-  { background: string; foreground: string }
+  { background: string; foreground: string; border?: string }
 > = {
   primary: { background: color.oreo, foreground: color.gulchGreen },
   beige: { background: color.beige300, foreground: color.oreo },
   accent: { background: color.latte, foreground: color.white },
+  outline: {
+    background: "transparent",
+    foreground: color.white,
+    border: color.white,
+  },
+  light: { background: color.white, foreground: color.oreo },
+  dark: { background: color.oreo, foreground: color.white },
 };
 
 export function Button({
@@ -73,6 +80,7 @@ export function Button({
           paddingHorizontal: sizing.paddingHorizontal,
           backgroundColor: colors.background,
         },
+        colors.border ? { borderColor: colors.border, borderWidth: 2 } : null,
         fullWidth && styles.fullWidth,
         (pressed || disabled) && styles.dimmed,
       ]}
