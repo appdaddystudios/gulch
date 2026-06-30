@@ -37,6 +37,7 @@ export type ReconcileOptions = {
   geocoder: (address: string | null) => Promise<GeocodeResult>;
   existingByIdLastUpdated: ReadonlyMap<string, string | null>;
   existingLocationsById?: ReadonlyMap<string, ExistingRow>;
+  existingEventsById?: ReadonlyMap<string, ExistingRow>;
   knownOrganizerIds?: ReadonlySet<string>;
   now?: () => string;
 };
@@ -95,7 +96,14 @@ export async function reconcile(
   const changedItems = rawItems.filter((item) => changed(item, options.existingByIdLastUpdated));
   const rows = changedItems.map((item) => {
     if (collection === "organizers") return mapOrganizer(item);
-    if (collection === "events") return mapEvent(item);
+    if (collection === "events") {
+      const row = mapEvent(item);
+      const existing = options.existingEventsById?.get(row.webflow_item_id);
+      if ((existing?.external_link ?? null) !== row.external_link) {
+        row.image_status = "pending";
+      }
+      return row;
+    }
     return mapShow(item);
   });
   const eventOrganizerReplacements = collection === "events"

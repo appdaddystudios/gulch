@@ -127,6 +127,10 @@ export type Database = {
           readonly custom_time_description: string | null;
           readonly location_id: string | null;
           readonly external_link: string | null;
+          readonly image_url: string | null;
+          readonly image_status: "pending" | "ok" | "failed" | "unavailable";
+          readonly image_checksum: string | null;
+          readonly image_fetched_at: string | null;
           readonly tickets_required: boolean;
           readonly webflow_last_updated: string | null;
           readonly created_at: string;
@@ -141,6 +145,10 @@ export type Database = {
           readonly custom_time_description?: string | null;
           readonly location_id?: string | null;
           readonly external_link?: string | null;
+          readonly image_url?: string | null;
+          readonly image_status?: "pending" | "ok" | "failed" | "unavailable";
+          readonly image_checksum?: string | null;
+          readonly image_fetched_at?: string | null;
           readonly tickets_required?: boolean;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
@@ -155,6 +163,10 @@ export type Database = {
           readonly custom_time_description?: string | null;
           readonly location_id?: string | null;
           readonly external_link?: string | null;
+          readonly image_url?: string | null;
+          readonly image_status?: "pending" | "ok" | "failed" | "unavailable";
+          readonly image_checksum?: string | null;
+          readonly image_fetched_at?: string | null;
           readonly tickets_required?: boolean;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;

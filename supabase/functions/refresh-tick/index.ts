@@ -2,6 +2,7 @@ import { constantTimeEqual, jsonResponse } from "../_shared/auth.ts";
 import {
   createServiceClient,
   existingByIdLastUpdated,
+  existingEventById,
   existingLocationById,
   loadExistingRows,
   replaceAllEventOrganizers,
@@ -118,6 +119,7 @@ export function createRefreshHandler(deps: RefreshDeps = {}): (request: Request)
         geocoder,
         existingByIdLastUpdated: existingByIdLastUpdated(existing[table]),
         existingLocationsById: table === "locations" ? existingLocationById(existing.locations) : undefined,
+        existingEventsById: table === "events" ? existingEventById(existing.events) : undefined,
         knownOrganizerIds,
         now
       });

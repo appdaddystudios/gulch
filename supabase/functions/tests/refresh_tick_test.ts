@@ -262,3 +262,116 @@ Deno.test("refresh-tick fully reconciles organizer relationships for unchanged r
   assertEquals(summary.eventOrganizers, { derived: 2, replaced: 1, skipped: 1 });
   assertEquals(summary.managingRefs, { updated: 2 });
 });
+
+Deno.test("refresh-tick resets event image status only when a changed event external link changes", async () => {
+  const upsertRows: Record<string, unknown[]> = {};
+  const handler = createRefreshHandler({
+    env: (key) => ({
+      GULCH_REFRESH_SECRET: "right",
+      GULCH_WEBFLOW_API_KEY: "webflow",
+      MAPBOX_TOKEN: "mapbox"
+    })[key],
+    loadExisting: async (table) => {
+      if (table === "events") {
+        return [
+          {
+            webflow_item_id: "changed-link-event",
+            webflow_last_updated: "2026-06-01T00:00:00.000Z",
+            external_link: "https://www.instagram.com/p/old/"
+          },
+          {
+            webflow_item_id: "same-link-event",
+            webflow_last_updated: "2026-06-01T00:00:00.000Z",
+            external_link: "https://www.instagram.com/p/same/"
+          },
+          {
+            webflow_item_id: "unchanged-event",
+            webflow_last_updated: "2026-06-03T00:00:00.000Z",
+            external_link: "https://www.instagram.com/p/unchanged/"
+          }
+        ];
+      }
+      return [];
+    },
+    fetchItems: async (_token, collectionId) => {
+      if (collectionId === "6845d39c294d60e4c197cee9") {
+        return [
+          {
+            ...envelope,
+            id: "changed-link-event",
+            lastUpdated: "2026-06-03T00:00:00.000Z",
+            fieldData: {
+              name: "Changed Link Event",
+              slug: "changed-link-event",
+              "start-date-time": "2026-07-01T00:00:00.000Z",
+              "external-link": "https://www.instagram.com/p/new/"
+            }
+          },
+          {
+            ...envelope,
+            id: "same-link-event",
+            lastUpdated: "2026-06-03T00:00:00.000Z",
+            fieldData: {
+              name: "Same Link Event",
+              slug: "same-link-event",
+              "start-date-time": "2026-07-02T00:00:00.000Z",
+              "external-link": "https://www.instagram.com/p/same/"
+            }
+          },
+          {
+            ...envelope,
+            id: "unchanged-event",
+            lastUpdated: "2026-06-03T00:00:00.000Z",
+            fieldData: {
+              name: "Unchanged Event",
+              slug: "unchanged-event",
+              "start-date-time": "2026-07-03T00:00:00.000Z",
+              "external-link": "https://www.instagram.com/p/unchanged/"
+            }
+          }
+        ];
+      }
+      return [];
+    },
+    geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
+    upsert: async (table, rows) => {
+      upsertRows[table] = [...(upsertRows[table] ?? []), ...rows];
+    },
+    replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
+  });
+
+  const response = await handler(new Request("https://example.test", {
+    method: "POST",
+    headers: { authorization: "Bearer right" }
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(upsertRows.events, [
+    {
+      webflow_item_id: "changed-link-event",
+      name: "Changed Link Event",
+      slug: "changed-link-event",
+      start_at: "2026-07-01T00:00:00.000Z",
+      end_at: null,
+      custom_time_description: null,
+      location_id: null,
+      external_link: "https://www.instagram.com/p/new/",
+      tickets_required: false,
+      webflow_last_updated: "2026-06-03T00:00:00.000Z",
+      image_status: "pending"
+    },
+    {
+      webflow_item_id: "same-link-event",
+      name: "Same Link Event",
+      slug: "same-link-event",
+      start_at: "2026-07-02T00:00:00.000Z",
+      end_at: null,
+      custom_time_description: null,
+      location_id: null,
+      external_link: "https://www.instagram.com/p/same/",
+      tickets_required: false,
+      webflow_last_updated: "2026-06-03T00:00:00.000Z"
+    }
+  ]);
+});

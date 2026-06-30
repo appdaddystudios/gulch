@@ -33,6 +33,7 @@ export type EventRow = {
   custom_time_description: string | null;
   location_id: string | null;
   external_link: string | null;
+  image_status?: string;
   tickets_required: boolean;
   webflow_last_updated: string;
 };

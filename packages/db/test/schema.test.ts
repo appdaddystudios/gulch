@@ -58,6 +58,14 @@ describe("v1 mirror schema", () => {
     expect(columns.get("events.end_at")).toMatchObject({ data_type: "timestamp with time zone", is_nullable: "YES" });
     expect(columns.get("events.location_id")).toMatchObject({ data_type: "text", is_nullable: "YES" });
     expect(columns.get("events.external_link")).toMatchObject({ data_type: "text", is_nullable: "YES" });
+    expect(columns.get("events.image_url")).toMatchObject({ data_type: "text", is_nullable: "YES" });
+    expect(columns.get("events.image_status")).toMatchObject({ data_type: "text", is_nullable: "NO" });
+    expect(columns.get("events.image_status")?.column_default).toBe("'pending'::text");
+    expect(columns.get("events.image_checksum")).toMatchObject({ data_type: "text", is_nullable: "YES" });
+    expect(columns.get("events.image_fetched_at")).toMatchObject({
+      data_type: "timestamp with time zone",
+      is_nullable: "YES"
+    });
     expect(columns.get("events.tickets_required")).toMatchObject({ data_type: "boolean", is_nullable: "NO" });
 
     expect(columns.get("shows.start_date")).toMatchObject({ data_type: "timestamp with time zone", is_nullable: "YES" });
@@ -226,6 +234,55 @@ describe("v1 mirror schema", () => {
         ["bad-geocode", "Bad Geocode", "bad-geocode", "unknown"]
       )
     ).rejects.toThrow(/geocode_status|check constraint/i);
+  });
+
+  it("enforces valid image_status values", async () => {
+    for (const status of ["pending", "ok", "failed", "unavailable"] as const) {
+      await client.query(
+        "insert into public.events (webflow_item_id, name, slug, start_at, image_status) values ($1, $2, $3, $4, $5)",
+        [`image-status-${status}`, `Image Status ${status}`, `image-status-${status}`, "2026-07-03T22:00:00.000Z", status]
+      );
+    }
+
+    await expect(
+      client.query(
+        "insert into public.events (webflow_item_id, name, slug, start_at, image_status) values ($1, $2, $3, $4, $5)",
+        ["bad-image-status", "Bad Image Status", "bad-image-status", "2026-07-03T22:00:00.000Z", "unknown"]
+      )
+    ).rejects.toThrow(/image_status|check constraint/i);
+  });
+
+  it("creates the pending and failed event image work queue index", async () => {
+    const result = await client.query<{ indexdef: string }>(`
+      select indexdef
+      from pg_indexes
+      where schemaname = 'public'
+        and tablename = 'events'
+        and indexname = 'events_image_status_idx'
+    `);
+
+    expect(result.rowCount).toBe(1);
+    expect(result.rows[0]?.indexdef).toContain("USING btree (image_status)");
+    expect(result.rows[0]?.indexdef).toContain("WHERE (image_status = ANY");
+    expect(result.rows[0]?.indexdef).toContain("'pending'::text");
+    expect(result.rows[0]?.indexdef).toContain("'failed'::text");
+  });
+
+  it("applies all migrations without Supabase storage and leaves events intact", async () => {
+    const storageSchema = await client.query("select 1 from information_schema.schemata where schema_name = 'storage'");
+    expect(storageSchema.rowCount).toBe(0);
+
+    await client.query(
+      "insert into public.events (webflow_item_id, name, slug, start_at) values ($1, $2, $3, $4)",
+      ["plain-pg-event-image-default", "Plain PG Event Image Default", "plain-pg-event-image-default", "2026-07-03T22:00:00.000Z"]
+    );
+
+    const selected = await client.query<{ image_status: string; image_url: string | null }>(
+      "select image_status, image_url from public.events where webflow_item_id = $1",
+      ["plain-pg-event-image-default"]
+    );
+
+    expect(selected.rows[0]).toEqual({ image_status: "pending", image_url: null });
   });
 
   it("allows service_role to insert an event without external_link", async () => {

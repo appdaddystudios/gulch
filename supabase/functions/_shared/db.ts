@@ -13,6 +13,7 @@ export type ExistingRow = {
   geocode_status?: "pending" | "ok" | "failed" | "manual" | null;
   geocoded_at?: string | null;
   managing_organizer_id?: string | null;
+  external_link?: string | null;
 };
 
 export type ManagingOrganizerRefUpdate = {
@@ -37,6 +38,8 @@ export async function upsertRows(client: SupabaseClient, table: TableName, rows:
 export async function loadExistingRows(client: SupabaseClient, table: CollectionName): Promise<ExistingRow[]> {
   const columns = table === "locations"
     ? "webflow_item_id,webflow_last_updated,name_address,latitude,longitude,geocode_status,geocoded_at,managing_organizer_id"
+    : table === "events"
+      ? "webflow_item_id,webflow_last_updated,external_link"
     : "webflow_item_id,webflow_last_updated";
   const { data, error } = await client.from(table).select(columns);
   if (error) throw error;
@@ -48,6 +51,10 @@ export function existingByIdLastUpdated(rows: readonly ExistingRow[]): Map<strin
 }
 
 export function existingLocationById(rows: readonly ExistingRow[]): Map<string, ExistingRow> {
+  return new Map(rows.map((row) => [row.webflow_item_id, row]));
+}
+
+export function existingEventById(rows: readonly ExistingRow[]): Map<string, ExistingRow> {
   return new Map(rows.map((row) => [row.webflow_item_id, row]));
 }
 
