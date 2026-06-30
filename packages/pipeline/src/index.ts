@@ -1,5 +1,13 @@
 export { createGeocoder, type GeocodeFailed, type GeocodeOk, type Geocoder, type GeocoderOptions, type GeocodeResult } from "./geocoder";
 export {
+  runRegeocode,
+  type RegeocodeDbClient,
+  type RegeocodeLocation,
+  type RegeocodeLogger,
+  type RegeocodeSummary,
+  type RunRegeocodeOptions
+} from "./regeocode";
+export {
   runSeed,
   WEBFLOW_COLLECTION_IDS,
   type PipelineDbClient,

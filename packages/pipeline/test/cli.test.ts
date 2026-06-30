@@ -112,7 +112,7 @@ describe("parseCliEnv", () => {
         );
       }
 
-      return new Response(JSON.stringify({ features: [{ center: [-84.371, 33.772] }] }));
+      return new Response(JSON.stringify({ features: [{ center: [-84.371, 33.772], relevance: 1 }] }));
     }) as typeof globalThis.fetch;
 
     try {
