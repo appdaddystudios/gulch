@@ -111,3 +111,19 @@ export async function updateLocationManagingOrganizerRefs(
 
   return { updated: updates.length };
 }
+
+export async function markEventsImagePending(
+  client: SupabaseClient,
+  ids: readonly string[]
+): Promise<{ updated: number }> {
+  if (ids.length === 0) return { updated: 0 };
+
+  const { data, error } = await client
+    .from("events")
+    .update({ image_status: "pending" })
+    .in("webflow_item_id", [...ids])
+    .select("webflow_item_id");
+  if (error) throw error;
+
+  return { updated: data?.length ?? 0 };
+}

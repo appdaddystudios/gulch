@@ -5,6 +5,7 @@ import {
   existingEventById,
   existingLocationById,
   loadExistingRows,
+  markEventsImagePending,
   replaceAllEventOrganizers,
   updateLocationManagingOrganizerRefs,
   type TableName,
@@ -29,6 +30,7 @@ type ReplaceAllEventOrganizersFn = (rows: readonly EventOrganizerRow[]) => Promi
 type UpdateManagingOrganizerRefsFn = (
   updates: readonly ManagingOrganizerRefUpdate[]
 ) => Promise<{ updated: number }>;
+type MarkEventsImagePendingFn = (ids: readonly string[]) => Promise<{ updated: number }>;
 
 export type RefreshDeps = {
   env?: (key: string) => string | undefined;
@@ -38,6 +40,7 @@ export type RefreshDeps = {
   upsert?: UpsertFn;
   replaceAllEventOrganizers?: ReplaceAllEventOrganizersFn;
   updateManagingOrganizerRefs?: UpdateManagingOrganizerRefsFn;
+  markEventsImagePending?: MarkEventsImagePendingFn;
   geocoder?: (address: string | null) => Promise<GeocodeResult>;
   now?: () => string;
 };
@@ -45,6 +48,7 @@ export type RefreshDeps = {
 type Summary = Record<CollectionName, ReconcileSummary> & {
   eventOrganizers: { derived: number; replaced: number; skipped: number };
   managingRefs: { updated: number };
+  imagePending: { marked: number };
 };
 
 const ORDER: CollectionName[] = ["organizers", "locations", "events", "shows"];
@@ -69,6 +73,10 @@ async function defaultUpdateManagingOrganizerRefs(
   return updateLocationManagingOrganizerRefs(createServiceClient(), updates);
 }
 
+async function defaultMarkEventsImagePending(ids: readonly string[]): Promise<{ updated: number }> {
+  return markEventsImagePending(createServiceClient(), ids);
+}
+
 async function upsertBatches(table: TableName, rows: readonly UpsertRow[], upsert: UpsertFn): Promise<void> {
   for (let index = 0; index < rows.length; index += BATCH_SIZE) {
     await upsert(table, rows.slice(index, index + BATCH_SIZE));
@@ -83,6 +91,7 @@ export function createRefreshHandler(deps: RefreshDeps = {}): (request: Request)
   const upsert = deps.upsert ?? defaultUpsert;
   const replaceAllEventOrgs = deps.replaceAllEventOrganizers ?? defaultReplaceAllEventOrganizers;
   const updateManagingRefs = deps.updateManagingOrganizerRefs ?? defaultUpdateManagingOrganizerRefs;
+  const markImagePending = deps.markEventsImagePending ?? defaultMarkEventsImagePending;
   const geocoder = deps.geocoder ?? ((address) => geocode(env("MAPBOX_TOKEN") ?? "", address, fetcher));
   const now = deps.now ?? (() => new Date().toISOString());
 
@@ -119,11 +128,17 @@ export function createRefreshHandler(deps: RefreshDeps = {}): (request: Request)
         geocoder,
         existingByIdLastUpdated: existingByIdLastUpdated(existing[table]),
         existingLocationsById: table === "locations" ? existingLocationById(existing.locations) : undefined,
-        existingEventsById: table === "events" ? existingEventById(existing.events) : undefined,
         knownOrganizerIds,
         now
       });
       await upsertBatches(table, result.rows, upsert);
+      if (table === "events") {
+        const imagePendingIds = changedEventExternalLinkIds(result.rows, existingEventById(existing.events));
+        const imagePending = imagePendingIds.length > 0
+          ? await markImagePending(imagePendingIds)
+          : { updated: 0 };
+        summary.imagePending = { marked: imagePending.updated };
+      }
       summary[table] = result.summary;
     }
 
@@ -143,8 +158,27 @@ export function createRefreshHandler(deps: RefreshDeps = {}): (request: Request)
       skipped: eventOrganizers.skipped
     };
     summary.managingRefs = { updated: managingRefs.updated };
+    summary.imagePending ??= { marked: 0 };
     return jsonResponse(summary);
   };
+}
+
+function changedEventExternalLinkIds(
+  rows: readonly UpsertRow[],
+  existingEventsById: ReadonlyMap<string, ExistingRow>
+): string[] {
+  return rows.flatMap((row) => {
+    if (!("external_link" in row) || !("webflow_item_id" in row)) {
+      return [];
+    }
+
+    const existing = existingEventsById.get(row.webflow_item_id);
+    if (!existing || (existing.external_link ?? null) === row.external_link) {
+      return [];
+    }
+
+    return [row.webflow_item_id];
+  });
 }
 
 if (import.meta.main) {

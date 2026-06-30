@@ -128,6 +128,7 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
   assertEquals(summary, {
     organizers: { scanned: 1, upserted: 1, geocoded: 0, failed: 0 },
     locations: { scanned: 2, upserted: 1, geocoded: 1, failed: 0 },
+    imagePending: { marked: 0 },
     events: { scanned: 2, upserted: 1, geocoded: 0, failed: 0 },
     shows: { scanned: 0, upserted: 0, geocoded: 0, failed: 0 },
     eventOrganizers: { derived: 2, replaced: 1, skipped: 1 },
@@ -263,8 +264,9 @@ Deno.test("refresh-tick fully reconciles organizer relationships for unchanged r
   assertEquals(summary.managingRefs, { updated: 2 });
 });
 
-Deno.test("refresh-tick resets event image status only when a changed event external link changes", async () => {
+Deno.test("refresh-tick marks image pending separately so mixed event upserts stay homogeneous", async () => {
   const upsertRows: Record<string, unknown[]> = {};
+  const markedPending: string[][] = [];
   const handler = createRefreshHandler({
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
@@ -338,7 +340,11 @@ Deno.test("refresh-tick resets event image status only when a changed event exte
       upsertRows[table] = [...(upsertRows[table] ?? []), ...rows];
     },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
+    markEventsImagePending: async (ids) => {
+      markedPending.push([...ids]);
+      return { updated: ids.length };
+    }
   });
 
   const response = await handler(new Request("https://example.test", {
@@ -358,8 +364,7 @@ Deno.test("refresh-tick resets event image status only when a changed event exte
       location_id: null,
       external_link: "https://www.instagram.com/p/new/",
       tickets_required: false,
-      webflow_last_updated: "2026-06-03T00:00:00.000Z",
-      image_status: "pending"
+      webflow_last_updated: "2026-06-03T00:00:00.000Z"
     },
     {
       webflow_item_id: "same-link-event",
@@ -374,4 +379,128 @@ Deno.test("refresh-tick resets event image status only when a changed event exte
       webflow_last_updated: "2026-06-03T00:00:00.000Z"
     }
   ]);
+  assertEquals(upsertRows.events?.every((row) => !("image_status" in (row as Record<string, unknown>))), true);
+  assertEquals(markedPending, [["changed-link-event"]]);
+  assertEquals((await response.json()).imagePending, { marked: 1 });
+});
+
+Deno.test("refresh-tick marks image pending when an existing event link is newly set or cleared", async () => {
+  const markedPending: string[][] = [];
+  const handler = createRefreshHandler({
+    env: (key) => ({
+      GULCH_REFRESH_SECRET: "right",
+      GULCH_WEBFLOW_API_KEY: "webflow",
+      MAPBOX_TOKEN: "mapbox"
+    })[key],
+    loadExisting: async (table) => table === "events"
+      ? [
+        {
+          webflow_item_id: "newly-set-link-event",
+          webflow_last_updated: "2026-06-01T00:00:00.000Z",
+          external_link: null
+        },
+        {
+          webflow_item_id: "cleared-link-event",
+          webflow_last_updated: "2026-06-01T00:00:00.000Z",
+          external_link: "https://www.instagram.com/p/old/"
+        }
+      ]
+      : [],
+    fetchItems: async (_token, collectionId) => collectionId === "6845d39c294d60e4c197cee9"
+      ? [
+        {
+          ...envelope,
+          id: "newly-set-link-event",
+          lastUpdated: "2026-06-03T00:00:00.000Z",
+          fieldData: {
+            name: "Newly Set Link Event",
+            slug: "newly-set-link-event",
+            "start-date-time": "2026-07-01T00:00:00.000Z",
+            "external-link": "https://www.instagram.com/p/new/"
+          }
+        },
+        {
+          ...envelope,
+          id: "cleared-link-event",
+          lastUpdated: "2026-06-03T00:00:00.000Z",
+          fieldData: {
+            name: "Cleared Link Event",
+            slug: "cleared-link-event",
+            "start-date-time": "2026-07-02T00:00:00.000Z"
+          }
+        }
+      ]
+      : [],
+    geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
+    upsert: async () => {},
+    replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
+    markEventsImagePending: async (ids) => {
+      markedPending.push([...ids]);
+      return { updated: ids.length };
+    }
+  });
+
+  const response = await handler(new Request("https://example.test", {
+    method: "POST",
+    headers: { authorization: "Bearer right" }
+  }));
+  const summary = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(markedPending, [["newly-set-link-event", "cleared-link-event"]]);
+  assertEquals(summary.imagePending, { marked: 2 });
+});
+
+Deno.test("refresh-tick does not mark image pending when changed event links are unchanged", async () => {
+  const markedPending: string[][] = [];
+  const handler = createRefreshHandler({
+    env: (key) => ({
+      GULCH_REFRESH_SECRET: "right",
+      GULCH_WEBFLOW_API_KEY: "webflow",
+      MAPBOX_TOKEN: "mapbox"
+    })[key],
+    loadExisting: async (table) => table === "events"
+      ? [
+        {
+          webflow_item_id: "same-link-event",
+          webflow_last_updated: "2026-06-01T00:00:00.000Z",
+          external_link: "https://www.instagram.com/p/same/"
+        }
+      ]
+      : [],
+    fetchItems: async (_token, collectionId) => collectionId === "6845d39c294d60e4c197cee9"
+      ? [
+        {
+          ...envelope,
+          id: "same-link-event",
+          lastUpdated: "2026-06-03T00:00:00.000Z",
+          fieldData: {
+            name: "Same Link Event",
+            slug: "same-link-event",
+            "start-date-time": "2026-07-01T00:00:00.000Z",
+            "external-link": "https://www.instagram.com/p/same/"
+          }
+        }
+      ]
+      : [],
+    geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
+    upsert: async () => {},
+    replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
+    markEventsImagePending: async (ids) => {
+      markedPending.push([...ids]);
+      return { updated: ids.length };
+    }
+  });
+
+  const response = await handler(new Request("https://example.test", {
+    method: "POST",
+    headers: { authorization: "Bearer right" }
+  }));
+  const summary = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(markedPending, []);
+  assertEquals(summary.imagePending, { marked: 0 });
 });
