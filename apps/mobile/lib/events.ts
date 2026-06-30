@@ -1,6 +1,8 @@
 import type { DbClient } from "@gulch/db";
 import { z } from "zod";
 
+import { formatWeekRange, weekStartKey } from "./format";
+
 export type EventImageStatus = "pending" | "ok" | "failed" | "unavailable";
 
 export type EventListItem = {
@@ -110,6 +112,35 @@ export const listUpcomingEvents = async (
   }
 
   return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
+};
+
+export type EventWeekSection = {
+  readonly key: string;
+  readonly title: string;
+  readonly data: readonly EventListItem[];
+};
+
+// Buckets events into week sections (Sunday-start), oldest week first.
+// Assumes `events` is already ordered by start time (as listUpcomingEvents returns).
+export const groupEventsByWeek = (
+  events: readonly EventListItem[],
+  timeZone?: string,
+): readonly EventWeekSection[] => {
+  const buckets = new Map<string, EventListItem[]>();
+
+  for (const event of events) {
+    const key = weekStartKey(event.startAt, timeZone);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      bucket.push(event);
+    } else {
+      buckets.set(key, [event]);
+    }
+  }
+
+  return [...buckets.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, data]) => ({ key, title: formatWeekRange(key), data }));
 };
 
 const rawEventDetailSchema = rawEventSchema.extend({

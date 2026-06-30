@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getEventDetail, listUpcomingEvents } from "./events";
+import {
+  getEventDetail,
+  groupEventsByWeek,
+  listUpcomingEvents,
+  type EventListItem,
+} from "./events";
 
 type QueryResult = { data: unknown; error: unknown };
 
@@ -140,5 +145,51 @@ describe("getEventDetail", () => {
     await expect(
       getEventDetail(makeClient({ data: null, error }), "evt-1"),
     ).rejects.toThrow("boom");
+  });
+});
+
+describe("groupEventsByWeek", () => {
+  const mk = (id: string, startAt: string): EventListItem => ({
+    id,
+    name: id,
+    startAt,
+    endAt: null,
+    imageUrl: null,
+    imageStatus: "ok",
+    ticketsRequired: false,
+    externalLink: null,
+    organizerName: null,
+    locationName: null,
+  });
+
+  it("buckets events into week sections, oldest first", () => {
+    const sections = groupEventsByWeek(
+      [
+        mk("a", "2025-06-05T17:00:00Z"), // week of Jun 1
+        mk("b", "2025-06-12T17:00:00Z"), // week of Jun 8
+        mk("c", "2025-06-06T17:00:00Z"), // week of Jun 1
+      ],
+      "UTC",
+    );
+
+    expect(sections).toEqual([
+      {
+        key: "2025-06-01",
+        title: "Jun 1 – 7",
+        data: [
+          expect.objectContaining({ id: "a" }),
+          expect.objectContaining({ id: "c" }),
+        ],
+      },
+      {
+        key: "2025-06-08",
+        title: "Jun 8 – 14",
+        data: [expect.objectContaining({ id: "b" })],
+      },
+    ]);
+  });
+
+  it("returns an empty array for no events", () => {
+    expect(groupEventsByWeek([], "UTC")).toEqual([]);
   });
 });

@@ -1,15 +1,20 @@
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { ActivityIndicator, SectionList, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState } from "../../components/EmptyState";
 import { EventCard } from "../../components/EventCard";
 import { Header } from "../../components/Header";
 import { SearchBar } from "../../components/SearchBar";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
-import { listUpcomingEvents, type EventListItem } from "../../lib/events";
-import { color, space } from "../../theme";
+import {
+  groupEventsByWeek,
+  listUpcomingEvents,
+  type EventListItem,
+  type EventWeekSection,
+} from "../../lib/events";
+import { color, font, space, type as typePreset } from "../../theme";
 
 const loadEvents = (client: Parameters<typeof listUpcomingEvents>[0]) =>
   listUpcomingEvents(client, { limit: 100 });
@@ -27,11 +32,12 @@ export default function CalendarScreen() {
   const [search, setSearch] = useState("");
 
   const events = state.status === "ready" ? state.data : [];
-  const filtered = useMemo(() => {
+  const sections = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return query
+    const filtered = query
       ? events.filter((event) => matchesQuery(event, query))
       : events;
+    return groupEventsByWeek(filtered);
   }, [events, search]);
 
   const openEvent = (event: EventListItem) => {
@@ -46,7 +52,7 @@ export default function CalendarScreen() {
       </View>
       <Body
         state={state}
-        events={filtered}
+        sections={sections}
         onPressEvent={openEvent}
         hasSearch={search.trim().length > 0}
       />
@@ -56,12 +62,12 @@ export default function CalendarScreen() {
 
 function Body({
   state,
-  events,
+  sections,
   onPressEvent,
   hasSearch,
 }: {
   readonly state: QueryState<readonly EventListItem[]>;
-  readonly events: readonly EventListItem[];
+  readonly sections: readonly EventWeekSection[];
   readonly onPressEvent: (event: EventListItem) => void;
   readonly hasSearch: boolean;
 }) {
@@ -92,7 +98,7 @@ function Body({
     );
   }
 
-  if (events.length === 0) {
+  if (sections.length === 0) {
     return (
       <Centered>
         <EmptyState
@@ -108,14 +114,21 @@ function Body({
   }
 
   return (
-    <FlatList
+    <SectionList
       contentContainerStyle={styles.listContent}
-      data={events}
-      ItemSeparatorComponent={Separator}
+      sections={sections as EventWeekSection[]}
       keyExtractor={(item) => item.id}
       renderItem={({ item }) => (
         <EventCard event={item} onPress={() => onPressEvent(item)} />
       )}
+      renderSectionHeader={({ section }) => (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{section.title}</Text>
+          <View style={styles.sectionRule} />
+        </View>
+      )}
+      ItemSeparatorComponent={Separator}
+      stickySectionHeadersEnabled={false}
       showsVerticalScrollIndicator={false}
     />
   );
@@ -141,6 +154,25 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: space.xxl,
     paddingHorizontal: space.md,
+  },
+  sectionHeader: {
+    alignItems: "center",
+    backgroundColor: color.darkChocolate,
+    flexDirection: "row",
+    gap: space.md,
+    paddingBottom: space.md,
+    paddingTop: space.xl,
+  },
+  sectionTitle: {
+    color: color.khakis,
+    fontFamily: font.medium,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  sectionRule: {
+    backgroundColor: color.brown300,
+    flex: 1,
+    height: 1,
   },
   separator: {
     height: space.xl,

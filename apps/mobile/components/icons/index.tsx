@@ -69,7 +69,10 @@ export function LineupIcon({ size = 24, color = palette.khakis }: IconProps) {
   );
 }
 
-export function NewsletterIcon({ size = 24, color = palette.khakis }: IconProps) {
+export function NewsletterIcon({
+  size = 24,
+  color = palette.khakis,
+}: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -85,7 +88,10 @@ export function NewsletterIcon({ size = 24, color = palette.khakis }: IconProps)
 
 // --- Inline content icons ---
 
-export function MarkerPinIcon({ size = 16, color = palette.khakis }: IconProps) {
+export function MarkerPinIcon({
+  size = 16,
+  color = palette.khakis,
+}: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
       <Path
@@ -120,7 +126,10 @@ export function MailIcon({ size = 16, color = palette.white }: IconProps) {
   );
 }
 
-export function CheckVerifiedIcon({ size = 12, color = palette.gulchGreen }: IconProps) {
+export function CheckVerifiedIcon({
+  size = 12,
+  color = palette.gulchGreen,
+}: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 12 12" fill="none">
       <Path
@@ -133,7 +142,10 @@ export function CheckVerifiedIcon({ size = 12, color = palette.gulchGreen }: Ico
   );
 }
 
-export function ArrowLeftIcon({ size = 18, color = palette.khakis }: IconProps) {
+export function ArrowLeftIcon({
+  size = 18,
+  color = palette.khakis,
+}: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 18 18" fill="none">
       <Path
@@ -206,9 +218,62 @@ export function ShareIcon({ size = 16, color = palette.khakis }: IconProps) {
   );
 }
 
+export function HeartIcon({ size = 24, color = palette.white }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M11.9932 5.13581C9.9938 2.7984 6.65975 2.16964 4.15469 4.31001C1.64964 6.45038 1.29697 10.029 3.2642 12.5604C4.89982 14.6651 9.84977 19.1041 11.4721 20.5408C11.6536 20.7016 11.7444 20.7819 11.8502 20.8135C11.9426 20.8411 12.0437 20.8411 12.1361 20.8135C12.2419 20.7819 12.3327 20.7016 12.5142 20.5408C14.1365 19.1041 19.0865 14.6651 20.7221 12.5604C22.6893 10.029 22.3797 6.42787 19.8316 4.31001C17.2835 2.19216 13.9925 2.7984 11.9932 5.13581Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+export function DotsHorizontalIcon({
+  size = 24,
+  color = palette.khakis,
+}: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 13C12.5523 13 13 12.5523 13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12C11 12.5523 11.4477 13 12 13Z"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M19 13C19.5523 13 20 12.5523 20 12C20 11.4477 19.5523 11 19 11C18.4477 11 18 11.4477 18 12C18 12.5523 18.4477 13 19 13Z"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M5 13C5.55228 13 6 12.5523 6 12C6 11.4477 5.55228 11 5 11C4.44772 11 4 11.4477 4 12C4 12.5523 4.44772 13 5 13Z"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 // --- Brand wordmark ---
 
-export function GulchLogo({ width = 198, height = 24 }: { readonly width?: number; readonly height?: number }) {
+export function GulchLogo({
+  width = 198,
+  height = 24,
+}: {
+  readonly width?: number;
+  readonly height?: number;
+}) {
   return (
     <Svg width={width} height={height} viewBox="0 0 198 24" fill="none">
       <Path
