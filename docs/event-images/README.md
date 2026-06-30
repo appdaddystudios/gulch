@@ -64,6 +64,29 @@ On the Event Details screen (Figma node `2056-10950`), show a full-bleed **hero 
 
 None blocking. Design-phase choices: where fetch runs (Node pipeline vs Deno edge — note crawler-UA fetch + image transcoding/HEIC decode may favor the Node pipeline); image format/resolution/derivatives; exact DB columns + status enum; storage key scheme + bucket policy; placeholder asset; backfill batching/rate-limit parameters; monitoring/alerting for scrape-route breakage.
 
+## How to consume (for UI work) — where to look when using images
+
+Backend shipped (PR #12); `.env` auto-load (PR #13). **Each `events` row carries its own hero image — read it straight off the event; no Instagram calls from the app.**
+
+**Fields on `public.events`:**
+- `image_url` — stable public CDN URL of the rehosted cover (or `null`); already includes a `?v=<checksum8>` cache-buster. Use directly as an `<Image>` source.
+- `image_status` — `ok` (ready) · `pending` (not fetched) · `failed` (transient, retries) · `unavailable` (no IG link / private / removed — no image will ever exist).
+- `image_checksum`, `image_fetched_at` — internal; UI ignores.
+
+**Render rule (Event Details hero, Figma node 2056-10950):**
+```tsx
+const hasImage = event.image_status === 'ok' && !!event.image_url;
+hasImage
+  ? <Image source={{ uri: event.image_url }} resizeMode="cover" /> // 640x640 JPEG, crop to hero box
+  : <PlaceholderHero />;                                           // bundled branded asset
+// + gradient scrim per design; top-right button opens event.external_link (the IG post = attribution)
+```
+- Source images are **640×640 JPEG** (hard ceiling) — cover-crop into the hero. Always render the placeholder when not `ok` (~95% resolve; the rest are `unavailable`/`pending`/`failed`). Never show a broken image. Never hotlink Instagram URLs — always use `image_url` (our CDN).
+
+**Storage (FYI):** public bucket `event-images`, key `events/{webflow_item_id}.jpg`, URL `{SUPABASE_URL}/storage/v1/object/public/event-images/events/{id}.jpg`.
+
+**Operating the pipeline (stale/missing images):** `pnpm --filter @gulch/pipeline run images` (auto-loads `.env`; rate-limited, idempotent, processes `pending`+`failed`). New events default `pending`; refresh-tick re-marks `pending` only when `external_link` changes; edge never scrapes — drain the queue by re-running `images`. Scraping is best-effort (Meta can break it → placeholder shows; expected, not a bug).
+
 ## First-principles takeaways
 
 1. **Instagram fights this** — only the `og:image` crawler-UA route works unauthenticated, and only for the cover. That single image is exactly what v1's single-hero design needs.
