@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "check": "deno check **/*.ts",
+    "test": "deno test --allow-env --allow-net=api.webflow.com,api.mapbox.com"
+  },
+  "nodeModulesDir": "auto",
+  "compilerOptions": {
+    "strict": true
+  },
+  "imports": {
+    "@supabase/supabase-js": "jsr:@supabase/supabase-js@2",
+    "zod": "npm:zod"
+  }
+}
