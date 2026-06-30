@@ -1,6 +1,6 @@
 import { hmacSha256Hex, verifyHmacSha256 } from "../_shared/auth.ts";
 import { clearGeocodeCache, geocode } from "../_shared/geocode.ts";
-import { mapEvent, mapLocation } from "../_shared/mappers.ts";
+import { deriveEventOrganizers, mapEvent, mapLocation, mapOrganizer } from "../_shared/mappers.ts";
 import { reconcile } from "../_shared/reconcile.ts";
 import { fetchLiveItem, fetchLiveItems } from "../_shared/webflow.ts";
 import { assert, assertEquals, assertMatch, envelope } from "./helpers.ts";
@@ -32,6 +32,50 @@ Deno.test("mappers normalize nullable optional strings like shared package", () 
   });
 
   assertEquals(location.neighborhood, null);
+});
+
+Deno.test("organizer mapper and event organizer derivation match node shared behavior", () => {
+  const organizerRaw = {
+    ...envelope,
+    id: "organizer-1",
+    lastUpdated: "2026-06-04T12:00:00.000Z",
+    fieldData: {
+      name: "Organizer One",
+      slug: "organizer-one",
+      "website-url": "https://example.com",
+      "instagram-url": "",
+      "facebook-url": null,
+      "is-featured": true,
+      "custom-color": "#ffcc00"
+    }
+  };
+  const eventRaw = {
+    ...envelope,
+    id: "event-1",
+    lastUpdated: "2026-06-04T12:00:00.000Z",
+    fieldData: {
+      name: "Event One",
+      slug: "event-one",
+      "start-date-time": "2026-07-03T22:00:00.000Z",
+      "additional-organizers": ["organizer-1", { id: "organizer-2" }, "organizer-1"]
+    }
+  };
+
+  assertEquals(mapOrganizer(organizerRaw), {
+    webflow_item_id: "organizer-1",
+    name: "Organizer One",
+    slug: "organizer-one",
+    website_url: "https://example.com",
+    instagram_url: null,
+    facebook_url: null,
+    is_featured: true,
+    custom_color: "#ffcc00",
+    webflow_last_updated: "2026-06-04T12:00:00.000Z"
+  });
+  assertEquals(deriveEventOrganizers(eventRaw), [
+    { event_id: "event-1", organizer_id: "organizer-1" },
+    { event_id: "event-1", organizer_id: "organizer-2" }
+  ]);
 });
 
 Deno.test("fetchLiveItems filters draft and archived live items", async () => {

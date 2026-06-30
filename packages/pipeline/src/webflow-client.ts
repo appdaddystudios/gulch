@@ -18,6 +18,13 @@ const pageLimit = 100;
 const baseUrl = "https://api.webflow.com/v2";
 const defaultRetryCount = 3;
 
+export const WEBFLOW_COLLECTION_IDS = {
+  organizers: "6a430e64b51f80db57a22b3c",
+  locations: "6843bee91e942f36fd3adc06",
+  events: "6845d39c294d60e4c197cee9",
+  shows: "6865fb691dda49a9c7043754"
+} as const;
+
 const webflowPageSchema = z
   .object({
     items: z.array(z.unknown()),

@@ -1,12 +1,31 @@
 import { z } from "npm:zod";
 import { constantTimeEqual, jsonResponse, verifyHmacSha256 } from "../_shared/auth.ts";
-import { createServiceClient, upsertRows } from "../_shared/db.ts";
+import {
+  createServiceClient,
+  loadKnownOrganizerIds,
+  replaceEventOrganizers,
+  upsertRows,
+  type TableName
+} from "../_shared/db.ts";
 import { geocode, type GeocodeResult } from "../_shared/geocode.ts";
-import { mapEvent, mapLocation, mapShow, type UpsertRow } from "../_shared/mappers.ts";
+import {
+  deriveEventOrganizers,
+  mapEvent,
+  mapLocation,
+  mapOrganizer,
+  mapShow,
+  type EventOrganizerRow,
+  type UpsertRow
+} from "../_shared/mappers.ts";
 import { COLLECTIONS, TABLE_BY_COLLECTION_ID, type CollectionName, type WebflowItem } from "../_shared/schemas.ts";
 import { fetchLiveItem, type FetchLike } from "../_shared/webflow.ts";
 
-type UpsertFn = (table: CollectionName, rows: readonly UpsertRow[]) => Promise<void>;
+type UpsertFn = (table: TableName, rows: readonly UpsertRow[]) => Promise<void>;
+type ReplaceEventOrganizersFn = (
+  eventId: string,
+  rows: readonly EventOrganizerRow[],
+  knownOrganizerIds: ReadonlySet<string>
+) => Promise<{ inserted: number; skipped: number }>;
 
 export type WebhookDeps = {
   env?: (key: string) => string | undefined;
@@ -14,6 +33,8 @@ export type WebhookDeps = {
   fetchLiveItemFn?: (token: string, collectionId: string, itemId: string) => Promise<WebflowItem | null>;
   geocoder?: (address: string | null) => Promise<GeocodeResult>;
   upsert?: UpsertFn;
+  loadKnownOrganizerIds?: () => Promise<Set<string>>;
+  replaceEventOrganizers?: ReplaceEventOrganizersFn;
   now?: () => string;
 };
 
@@ -43,20 +64,38 @@ function extractPayload(raw: unknown): { triggerType: string | undefined; collec
   };
 }
 
-async function defaultUpsert(table: CollectionName, rows: readonly UpsertRow[]): Promise<void> {
+async function defaultUpsert(table: TableName, rows: readonly UpsertRow[]): Promise<void> {
   await upsertRows(createServiceClient(), table, rows);
+}
+
+async function defaultLoadKnownOrganizerIds(): Promise<Set<string>> {
+  return loadKnownOrganizerIds(createServiceClient());
+}
+
+async function defaultReplaceEventOrganizers(
+  eventId: string,
+  rows: readonly EventOrganizerRow[],
+  knownOrganizerIds: ReadonlySet<string>
+): Promise<{ inserted: number; skipped: number }> {
+  return replaceEventOrganizers(createServiceClient(), eventId, rows, knownOrganizerIds);
 }
 
 async function mapWebhookItem(
   table: CollectionName,
   item: WebflowItem,
   geocoder: (address: string | null) => Promise<GeocodeResult>,
+  knownOrganizerIds: ReadonlySet<string>,
   now: () => string
 ): Promise<UpsertRow> {
   if (table === "events") return mapEvent(item);
+  if (table === "organizers") return mapOrganizer(item);
   if (table === "shows") return mapShow(item);
 
-  const row = mapLocation(item);
+  const mapped = mapLocation(item);
+  const row =
+    mapped.managing_organizer_id && !knownOrganizerIds.has(mapped.managing_organizer_id)
+      ? { ...mapped, managing_organizer_id: null }
+      : mapped;
   const result = await geocoder(row.name_address);
   row.latitude = result.latitude;
   row.longitude = result.longitude;
@@ -71,6 +110,8 @@ export function createWebhookHandler(deps: WebhookDeps = {}): (request: Request)
   const fetchItem = deps.fetchLiveItemFn ?? ((token, collectionId, itemId) => fetchLiveItem(token, collectionId, itemId, fetcher));
   const geocoder = deps.geocoder ?? ((address) => geocode(env("MAPBOX_TOKEN") ?? "", address, fetcher));
   const upsert = deps.upsert ?? defaultUpsert;
+  const loadOrganizerIds = deps.loadKnownOrganizerIds ?? defaultLoadKnownOrganizerIds;
+  const replaceEventOrgs = deps.replaceEventOrganizers ?? defaultReplaceEventOrganizers;
   const now = deps.now ?? (() => new Date().toISOString());
 
   return async (request: Request): Promise<Response> => {
@@ -107,8 +148,12 @@ export function createWebhookHandler(deps: WebhookDeps = {}): (request: Request)
     const item = await fetchItem(webflowToken, collectionId, itemId);
     if (!item) return jsonResponse({ ok: true });
 
-    const row = await mapWebhookItem(table, item, geocoder, now);
+    const knownOrganizerIds = table === "shows" ? new Set<string>() : await loadOrganizerIds();
+    const row = await mapWebhookItem(table, item, geocoder, knownOrganizerIds, now);
     await upsert(table, [row]);
+    if (table === "events") {
+      await replaceEventOrgs(item.id, deriveEventOrganizers(item), knownOrganizerIds);
+    }
     return jsonResponse({ ok: true });
   };
 }

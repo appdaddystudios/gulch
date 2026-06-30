@@ -1,10 +1,11 @@
 import type { Database } from "@gulch/db";
 import { describe, expect, it } from "vitest";
 
-import { mapEvent, mapLocation, mapShow } from "../src/mappers";
+import { deriveEventOrganizers, mapEvent, mapLocation, mapOrganizer, mapShow } from "../src/mappers";
 
 type LocationInsert = Database["public"]["Tables"]["locations"]["Insert"];
 type EventInsert = Database["public"]["Tables"]["events"]["Insert"];
+type OrganizerInsert = Database["public"]["Tables"]["organizers"]["Insert"];
 type ShowInsert = Database["public"]["Tables"]["shows"]["Insert"];
 
 const envelope = {
@@ -28,7 +29,9 @@ describe("Webflow to Supabase mappers", () => {
         "google-maps-link-url": "https://maps.google.com/?q=Tim+Barrett+Designs",
         "neighborhood-optional": "Old Fourth Ward",
         "parking-optional": "Street parking",
-        "hide-from-locations-list": true
+        "hide-from-locations-list": true,
+        "is-organizer": true,
+        "managing-organizer": "organizer-atlanta-art-week"
       }
     };
 
@@ -43,6 +46,8 @@ describe("Webflow to Supabase mappers", () => {
       neighborhood: "Old Fourth Ward",
       parking: "Street parking",
       hide_from_list: true,
+      is_organizer: true,
+      managing_organizer_id: "organizer-atlanta-art-week",
       webflow_last_updated: "2026-06-02T12:00:00.000Z"
     });
     expect("latitude" in mapped).toBe(false);
@@ -67,6 +72,8 @@ describe("Webflow to Supabase mappers", () => {
       neighborhood: null,
       parking: null,
       hide_from_list: false,
+      is_organizer: false,
+      managing_organizer_id: null,
       webflow_item_id: "location-minimal",
       webflow_last_updated: "2026-06-03T12:00:00.000Z"
     });
@@ -118,6 +125,119 @@ describe("Webflow to Supabase mappers", () => {
       tickets_required: true,
       webflow_last_updated: "2026-06-04T12:00:00.000Z"
     });
+  });
+
+  it("maps a full organizer", () => {
+    const item = {
+      ...envelope,
+      id: "organizer-atlanta-art-week",
+      lastUpdated: "2026-06-08T12:00:00.000Z",
+      fieldData: {
+        name: "Atlanta Art Week",
+        slug: "atlanta-art-week",
+        "website-url": "https://example.com",
+        "instagram-url": "https://instagram.com/atlantaartweek",
+        "facebook-url": "https://facebook.com/atlantaartweek",
+        "is-featured": true,
+        "custom-color": "#ffcc00"
+      }
+    };
+
+    const mapped: OrganizerInsert = mapOrganizer(item);
+
+    expect(mapped).toEqual({
+      webflow_item_id: "organizer-atlanta-art-week",
+      name: "Atlanta Art Week",
+      slug: "atlanta-art-week",
+      website_url: "https://example.com",
+      instagram_url: "https://instagram.com/atlantaartweek",
+      facebook_url: "https://facebook.com/atlantaartweek",
+      is_featured: true,
+      custom_color: "#ffcc00",
+      webflow_last_updated: "2026-06-08T12:00:00.000Z"
+    });
+  });
+
+  it("maps missing organizer optionals to null and false", () => {
+    const mapped = mapOrganizer({
+      ...envelope,
+      id: "organizer-minimal",
+      lastUpdated: "2026-06-09T12:00:00.000Z",
+      fieldData: {
+        name: "Minimal Organizer",
+        slug: "minimal-organizer"
+      }
+    });
+
+    expect(mapped).toEqual({
+      webflow_item_id: "organizer-minimal",
+      name: "Minimal Organizer",
+      slug: "minimal-organizer",
+      website_url: null,
+      instagram_url: null,
+      facebook_url: null,
+      is_featured: false,
+      custom_color: null,
+      webflow_last_updated: "2026-06-09T12:00:00.000Z"
+    });
+  });
+
+  it("derives no event organizers from missing, null, or empty references", () => {
+    const baseItem = {
+      ...envelope,
+      id: "event-empty-organizers",
+      lastUpdated: "2026-06-10T12:00:00.000Z",
+      fieldData: {
+        name: "Empty Organizers Event",
+        slug: "empty-organizers-event",
+        "start-date-time": "2026-07-06T22:00:00.000Z"
+      }
+    };
+
+    expect(deriveEventOrganizers(baseItem)).toEqual([]);
+    expect(
+      deriveEventOrganizers({
+        ...baseItem,
+        fieldData: {
+          ...baseItem.fieldData,
+          "additional-organizers": null
+        }
+      })
+    ).toEqual([]);
+    expect(
+      deriveEventOrganizers({
+        ...baseItem,
+        fieldData: {
+          ...baseItem.fieldData,
+          "additional-organizers": []
+        }
+      })
+    ).toEqual([]);
+  });
+
+  it("derives single, multi, duplicate, and object-shaped event organizer references", () => {
+    const item = {
+      ...envelope,
+      id: "event-with-organizers",
+      lastUpdated: "2026-06-11T12:00:00.000Z",
+      fieldData: {
+        name: "Organized Event",
+        slug: "organized-event",
+        "start-date-time": "2026-07-07T22:00:00.000Z",
+        "additional-organizers": [
+          "organizer-one",
+          "organizer-two",
+          "organizer-one",
+          { id: "organizer-three", name: "Passthrough" }
+        ]
+      }
+    };
+
+    expect(deriveEventOrganizers(item)).toEqual([
+      { event_id: "event-with-organizers", organizer_id: "organizer-one" },
+      { event_id: "event-with-organizers", organizer_id: "organizer-two" },
+      { event_id: "event-with-organizers", organizer_id: "organizer-three" }
+    ]);
   });
 
   it("maps missing optional event location, link, and flags to null/defaults", () => {

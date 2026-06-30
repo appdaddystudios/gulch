@@ -1,6 +1,7 @@
 import { z } from "npm:zod";
 
 export const COLLECTIONS = {
+  organizers: "6a430e64b51f80db57a22b3c",
   locations: "6843bee91e942f36fd3adc06",
   events: "6845d39c294d60e4c197cee9",
   shows: "6865fb691dda49a9c7043754"
@@ -9,6 +10,7 @@ export const COLLECTIONS = {
 export type CollectionName = keyof typeof COLLECTIONS;
 
 export const TABLE_BY_COLLECTION_ID: Readonly<Record<string, CollectionName>> = {
+  [COLLECTIONS.organizers]: "organizers",
   [COLLECTIONS.locations]: "locations",
   [COLLECTIONS.events]: "events",
   [COLLECTIONS.shows]: "shows"
@@ -37,7 +39,9 @@ export const locationFieldDataSchema = z.object({
   "google-maps-link-url": optionalString,
   "neighborhood-optional": optionalString,
   "parking-optional": optionalString,
-  "hide-from-locations-list": z.boolean().nullable().optional()
+  "hide-from-locations-list": z.boolean().nullable().optional(),
+  "is-organizer": z.boolean().nullable().optional(),
+  "managing-organizer": optionalString
 });
 
 export const eventFieldDataSchema = z.object({
@@ -48,7 +52,21 @@ export const eventFieldDataSchema = z.object({
   "custom-time-description": optionalString,
   location: optionalString,
   "external-link": optionalString,
-  "show-tickets-required-tag": z.boolean().nullable().optional()
+  "show-tickets-required-tag": z.boolean().nullable().optional(),
+  "additional-organizers": z
+    .array(z.union([z.string(), z.object({ id: z.string() }).passthrough()]))
+    .nullish()
+    .transform((a) => (a ?? []).map((x) => (typeof x === "string" ? x : x.id)))
+});
+
+export const organizerFieldDataSchema = z.object({
+  name: requiredString,
+  slug: requiredString,
+  "website-url": optionalString,
+  "instagram-url": optionalString,
+  "facebook-url": optionalString,
+  "is-featured": z.boolean().nullable().optional(),
+  "custom-color": optionalString
 });
 
 export const showFieldDataSchema = z.object({
@@ -62,6 +80,7 @@ export const showFieldDataSchema = z.object({
 
 export const webflowLocationItemSchema = webflowItemEnvelopeSchema.extend({ fieldData: locationFieldDataSchema });
 export const webflowEventItemSchema = webflowItemEnvelopeSchema.extend({ fieldData: eventFieldDataSchema });
+export const webflowOrganizerItemSchema = webflowItemEnvelopeSchema.extend({ fieldData: organizerFieldDataSchema });
 export const webflowShowItemSchema = webflowItemEnvelopeSchema.extend({ fieldData: showFieldDataSchema });
 
 export const webflowLiveItemsResponseSchema = z
@@ -81,6 +100,7 @@ export const webflowLiveItemsResponseSchema = z
 export type WebflowItem = z.infer<typeof webflowItemEnvelopeSchema>;
 export type WebflowLocationItem = z.infer<typeof webflowLocationItemSchema>;
 export type WebflowEventItem = z.infer<typeof webflowEventItemSchema>;
+export type WebflowOrganizerItem = z.infer<typeof webflowOrganizerItemSchema>;
 export type WebflowShowItem = z.infer<typeof webflowShowItemSchema>;
 
 export function parseWebflowItem<TSchema extends z.ZodTypeAny>(schema: TSchema, raw: unknown): z.infer<TSchema> {

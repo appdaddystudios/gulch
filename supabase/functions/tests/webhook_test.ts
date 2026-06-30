@@ -21,6 +21,30 @@ const createdLocationPayload = {
   }
 };
 
+const organizerItem = {
+  ...envelope,
+  id: "organizer-123",
+  lastUpdated: "2026-06-02T12:00:00.000Z",
+  fieldData: {
+    name: "Organizer 123",
+    slug: "organizer-123",
+    "website-url": "https://example.com",
+    "is-featured": true
+  }
+};
+
+const eventItem = {
+  ...envelope,
+  id: "event-123",
+  lastUpdated: "2026-06-02T12:00:00.000Z",
+  fieldData: {
+    name: "Event 123",
+    slug: "event-123",
+    "start-date-time": "2026-07-03T22:00:00.000Z",
+    "additional-organizers": ["organizer-123", "missing-organizer"]
+  }
+};
+
 Deno.test("webhook rejects missing or wrong shared secret", async () => {
   const handler = createWebhookHandler({ env: (key) => key === "GULCH_WEBHOOK_SECRET" ? "right" : "unused" });
   const missing = await handler(new Request("https://example.test", { method: "POST", body: "{}" }));
@@ -40,6 +64,7 @@ Deno.test("webhook maps, geocodes, and upserts a created location item", async (
     })[key],
     fetchLiveItemFn: async () => locationItem,
     geocoder: async () => ({ latitude: 33.76, longitude: -84.36, status: "ok" }),
+    loadKnownOrganizerIds: async () => new Set(),
     upsert: async (table, rows) => {
       calls.push({ table, rows });
     },
@@ -63,6 +88,8 @@ Deno.test("webhook maps, geocodes, and upserts a created location item", async (
       neighborhood: null,
       parking: null,
       hide_from_list: false,
+      is_organizer: false,
+      managing_organizer_id: null,
       webflow_last_updated: "2026-06-02T12:00:00.000Z",
       latitude: 33.76,
       longitude: -84.36,
@@ -70,6 +97,98 @@ Deno.test("webhook maps, geocodes, and upserts a created location item", async (
       geocoded_at: "2026-06-29T10:00:00.000Z"
     }]
   }]);
+});
+
+Deno.test("webhook upserts a created organizer item", async () => {
+  const calls: unknown[] = [];
+  const handler = createWebhookHandler({
+    env: (key) => ({
+      GULCH_WEBHOOK_SECRET: "right",
+      GULCH_WEBFLOW_API_KEY: "webflow"
+    })[key],
+    fetchLiveItemFn: async () => organizerItem,
+    loadKnownOrganizerIds: async () => new Set(),
+    upsert: async (table, rows) => {
+      calls.push({ table, rows });
+    }
+  });
+
+  const response = await handler(new Request("https://example.test?secret=right", {
+    method: "POST",
+    body: JSON.stringify({
+      triggerType: "collection_item_created",
+      payload: { collectionId: "6a430e64b51f80db57a22b3c", id: "organizer-123" }
+    })
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(calls, [{
+    table: "organizers",
+    rows: [{
+      webflow_item_id: "organizer-123",
+      name: "Organizer 123",
+      slug: "organizer-123",
+      website_url: "https://example.com",
+      instagram_url: null,
+      facebook_url: null,
+      is_featured: true,
+      custom_color: null,
+      webflow_last_updated: "2026-06-02T12:00:00.000Z"
+    }]
+  }]);
+});
+
+Deno.test("webhook replaces event organizers for created events and skips dangling organizers", async () => {
+  const calls: unknown[] = [];
+  const handler = createWebhookHandler({
+    env: (key) => ({
+      GULCH_WEBHOOK_SECRET: "right",
+      GULCH_WEBFLOW_API_KEY: "webflow"
+    })[key],
+    fetchLiveItemFn: async () => eventItem,
+    loadKnownOrganizerIds: async () => new Set(["organizer-123"]),
+    upsert: async (table, rows) => {
+      calls.push({ table, rows });
+    },
+    replaceEventOrganizers: async (eventId, rows, knownOrganizerIds) => {
+      calls.push({
+        eventId,
+        rows: rows.filter((row) => knownOrganizerIds.has(row.organizer_id))
+      });
+      return { inserted: 1, skipped: 1 };
+    }
+  });
+
+  const response = await handler(new Request("https://example.test?secret=right", {
+    method: "POST",
+    body: JSON.stringify({
+      triggerType: "collection_item_created",
+      payload: { collectionId: "6845d39c294d60e4c197cee9", id: "event-123" }
+    })
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(calls, [
+    {
+      table: "events",
+      rows: [{
+        webflow_item_id: "event-123",
+        name: "Event 123",
+        slug: "event-123",
+        start_at: "2026-07-03T22:00:00.000Z",
+        end_at: null,
+        custom_time_description: null,
+        location_id: null,
+        external_link: null,
+        tickets_required: false,
+        webflow_last_updated: "2026-06-02T12:00:00.000Z"
+      }]
+    },
+    {
+      eventId: "event-123",
+      rows: [{ event_id: "event-123", organizer_id: "organizer-123" }]
+    }
+  ]);
 });
 
 Deno.test("webhook skips HMAC when no Webflow signing secret is configured", async () => {
@@ -82,6 +201,7 @@ Deno.test("webhook skips HMAC when no Webflow signing secret is configured", asy
     })[key],
     fetchLiveItemFn: async () => locationItem,
     geocoder: async () => ({ latitude: 33.76, longitude: -84.36, status: "ok" }),
+    loadKnownOrganizerIds: async () => new Set(),
     upsert: async (table, rows) => {
       calls.push({ table, rows });
     }
@@ -113,6 +233,7 @@ Deno.test("webhook verifies HMAC with separate Webflow signing secret when confi
     })[key],
     fetchLiveItemFn: async () => locationItem,
     geocoder: async () => ({ latitude: 33.76, longitude: -84.36, status: "ok" }),
+    loadKnownOrganizerIds: async () => new Set(),
     upsert: async () => {}
   });
 

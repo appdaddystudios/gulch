@@ -2,6 +2,7 @@ import {
   parseWebflowItem,
   webflowEventItemSchema,
   webflowLocationItemSchema,
+  webflowOrganizerItemSchema,
   webflowShowItemSchema
 } from "./schemas.ts";
 
@@ -14,6 +15,8 @@ export type LocationRow = {
   neighborhood: string | null;
   parking: string | null;
   hide_from_list: boolean;
+  is_organizer: boolean;
+  managing_organizer_id: string | null;
   latitude?: number | null;
   longitude?: number | null;
   geocode_status?: "pending" | "ok" | "failed" | "manual";
@@ -34,6 +37,23 @@ export type EventRow = {
   webflow_last_updated: string;
 };
 
+export type OrganizerRow = {
+  webflow_item_id: string;
+  name: string;
+  slug: string;
+  website_url: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  is_featured: boolean;
+  custom_color: string | null;
+  webflow_last_updated: string;
+};
+
+export type EventOrganizerRow = {
+  event_id: string;
+  organizer_id: string;
+};
+
 export type ShowRow = {
   webflow_item_id: string;
   name: string;
@@ -45,7 +65,7 @@ export type ShowRow = {
   webflow_last_updated: string;
 };
 
-export type UpsertRow = LocationRow | EventRow | ShowRow;
+export type UpsertRow = LocationRow | EventRow | OrganizerRow | EventOrganizerRow | ShowRow;
 
 export function mapLocation(raw: unknown): LocationRow {
   const item = parseWebflowItem(webflowLocationItemSchema, raw);
@@ -59,6 +79,8 @@ export function mapLocation(raw: unknown): LocationRow {
     neighborhood: fields["neighborhood-optional"] ?? null,
     parking: fields["parking-optional"] ?? null,
     hide_from_list: fields["hide-from-locations-list"] ?? false,
+    is_organizer: fields["is-organizer"] ?? false,
+    managing_organizer_id: fields["managing-organizer"] ?? null,
     webflow_last_updated: item.lastUpdated
   };
 }
@@ -80,6 +102,33 @@ export function mapEvent(raw: unknown): EventRow {
   };
 }
 
+export function mapOrganizer(raw: unknown): OrganizerRow {
+  const item = parseWebflowItem(webflowOrganizerItemSchema, raw);
+  const fields = item.fieldData;
+  return {
+    webflow_item_id: item.id,
+    name: fields.name,
+    slug: fields.slug,
+    website_url: fields["website-url"] ?? null,
+    instagram_url: fields["instagram-url"] ?? null,
+    facebook_url: fields["facebook-url"] ?? null,
+    is_featured: fields["is-featured"] ?? false,
+    custom_color: fields["custom-color"] ?? null,
+    webflow_last_updated: item.lastUpdated
+  };
+}
+
+export function deriveEventOrganizers(raw: unknown): EventOrganizerRow[] {
+  const item = parseWebflowItem(webflowEventItemSchema, raw);
+  const seen = new Set<string>();
+
+  return item.fieldData["additional-organizers"].flatMap((organizerId) => {
+    if (seen.has(organizerId)) return [];
+    seen.add(organizerId);
+    return [{ event_id: item.id, organizer_id: organizerId }];
+  });
+}
+
 export function mapShow(raw: unknown): ShowRow {
   const item = parseWebflowItem(webflowShowItemSchema, raw);
   const fields = item.fieldData;
@@ -94,4 +143,3 @@ export function mapShow(raw: unknown): ShowRow {
     webflow_last_updated: item.lastUpdated
   };
 }
-

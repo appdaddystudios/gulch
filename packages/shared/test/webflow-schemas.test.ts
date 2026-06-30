@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   mapEvent,
   mapLocation,
+  mapOrganizer,
   mapShow,
   parseWebflowItem,
   webflowEventItemSchema,
   webflowLocationItemSchema,
+  webflowOrganizerItemSchema,
   webflowShowItemSchema
 } from "../src";
 
@@ -32,12 +34,16 @@ describe("Webflow item schemas", () => {
         "google-maps-link-url": "https://maps.google.com/?q=Tim+Barrett+Designs",
         "neighborhood-optional": "Old Fourth Ward",
         "parking-optional": "Street parking",
-        "hide-from-locations-list": false
+        "hide-from-locations-list": false,
+        "is-organizer": false,
+        "managing-organizer": null
       }
     });
 
     expect(location.success).toBe(true);
     expect(location.data.extraEnvelopeKey).toBe("allowed");
+    expect(location.data.fieldData["is-organizer"]).toBe(false);
+    expect(location.data.fieldData["managing-organizer"]).toBeNull();
 
     const event = parseWebflowItem(webflowEventItemSchema, {
       ...envelope,
@@ -49,11 +55,28 @@ describe("Webflow item schemas", () => {
         "custom-time-description": "6-9 PM",
         location: "location-123",
         "external-link": "https://www.instagram.com/p/example/",
-        "show-tickets-required-tag": true
+        "show-tickets-required-tag": true,
+        "additional-organizers": ["organizer-1", { id: "organizer-2", extra: "allowed" }]
       }
     });
 
     expect(event.data.fieldData["external-link"]).toBe("https://www.instagram.com/p/example/");
+    expect(event.data.fieldData["additional-organizers"]).toEqual(["organizer-1", "organizer-2"]);
+
+    const organizer = parseWebflowItem(webflowOrganizerItemSchema, {
+      ...envelope,
+      fieldData: {
+        name: "Atlanta Art Week",
+        slug: "atlanta-art-week",
+        "website-url": "https://example.com",
+        "instagram-url": "https://instagram.com/example",
+        "facebook-url": null,
+        "is-featured": true,
+        "custom-color": "#ffcc00"
+      }
+    });
+
+    expect(organizer.data.fieldData["custom-color"]).toBe("#ffcc00");
 
     const show = parseWebflowItem(webflowShowItemSchema, {
       ...envelope,
@@ -122,6 +145,24 @@ describe("Webflow item schemas", () => {
     });
 
     expect(missingLinkEvent.data.fieldData["external-link"]).toBeNull();
+
+    expect(() =>
+      parseWebflowItem(webflowOrganizerItemSchema, {
+        ...envelope,
+        fieldData: {
+          slug: "missing-name"
+        }
+      })
+    ).toThrow(/fieldData\.name: Required/);
+
+    expect(() =>
+      parseWebflowItem(webflowOrganizerItemSchema, {
+        ...envelope,
+        fieldData: {
+          name: "Missing Slug"
+        }
+      })
+    ).toThrow(/fieldData\.slug: Required/);
   });
 
   it("rejects empty required strings", () => {
@@ -200,6 +241,7 @@ describe("Webflow item schemas", () => {
   it("exports mappers from the public entry point", () => {
     expect(mapLocation).toBeTypeOf("function");
     expect(mapEvent).toBeTypeOf("function");
+    expect(mapOrganizer).toBeTypeOf("function");
     expect(mapShow).toBeTypeOf("function");
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createWebflowClient, type FetchLike } from "../src/webflow-client";
+import { createWebflowClient, WEBFLOW_COLLECTION_IDS, type FetchLike } from "../src/webflow-client";
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -9,6 +9,10 @@ const jsonResponse = (body: unknown, status = 200): Response =>
   });
 
 describe("createWebflowClient", () => {
+  it("exports the Webflow collection id for organizers", () => {
+    expect(WEBFLOW_COLLECTION_IDS.organizers).toBe("6a430e64b51f80db57a22b3c");
+  });
+
   it("paginates and concatenates all collection items", async () => {
     const seenUrls: string[] = [];
     const fetch: FetchLike = async (input) => {
