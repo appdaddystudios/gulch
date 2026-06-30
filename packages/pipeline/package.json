@@ -11,9 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
     "build": "true",
-    "seed": "tsx src/cli.ts",
-    "images": "tsx src/images-cli.ts",
-    "regeocode": "tsx src/regeocode-cli.ts"
+    "seed": "tsx --env-file-if-exists=../../.env src/cli.ts",
+    "images": "tsx --env-file-if-exists=../../.env src/images-cli.ts",
+    "regeocode": "tsx --env-file-if-exists=../../.env src/regeocode-cli.ts"
   },
   "dependencies": {
     "@gulch/db": "workspace:*",
