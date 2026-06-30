@@ -12,6 +12,7 @@
     "test": "vitest run --coverage",
     "build": "true",
     "seed": "tsx src/cli.ts",
+    "images": "tsx src/images-cli.ts",
     "regeocode": "tsx src/regeocode-cli.ts"
   },
   "dependencies": {

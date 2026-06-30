@@ -191,6 +191,40 @@ Deno.test("webhook replaces event organizers for created events and skips dangli
   ]);
 });
 
+Deno.test("webhook-created event relies on the database default image status", async () => {
+  const calls: { table: string; rows: readonly Record<string, unknown>[] }[] = [];
+  const handler = createWebhookHandler({
+    env: (key) => ({
+      GULCH_WEBHOOK_SECRET: "right",
+      GULCH_WEBFLOW_API_KEY: "webflow"
+    })[key],
+    fetchLiveItemFn: async () => ({
+      ...eventItem,
+      fieldData: {
+        ...eventItem.fieldData,
+        "external-link": "https://www.instagram.com/p/new-event/"
+      }
+    }),
+    loadKnownOrganizerIds: async () => new Set(["organizer-123"]),
+    upsert: async (table, rows) => {
+      calls.push({ table, rows: rows as readonly Record<string, unknown>[] });
+    },
+    replaceEventOrganizers: async () => ({ inserted: 1, skipped: 1 })
+  });
+
+  const response = await handler(new Request("https://example.test?secret=right", {
+    method: "POST",
+    body: JSON.stringify({
+      triggerType: "collection_item_created",
+      payload: { collectionId: "6845d39c294d60e4c197cee9", id: "event-123" }
+    })
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(calls[0]?.table, "events");
+  assertEquals("image_status" in (calls[0]?.rows[0] ?? {}), false);
+});
+
 Deno.test("webhook skips HMAC when no Webflow signing secret is configured", async () => {
   const calls: unknown[] = [];
   const handler = createWebhookHandler({
