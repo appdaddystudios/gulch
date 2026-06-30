@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Gulch",
+    "slug": "gulch",
+    "scheme": "gulch",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gulch.mobile"
+    },
+    "android": {
+      "package": "com.gulch.mobile"
+    },
+    "extra": {
+      "supabaseUrl": "$EXPO_PUBLIC_SUPABASE_URL",
+      "sentryDsn": "$EXPO_PUBLIC_SENTRY_DSN",
+      "posthogHost": "$EXPO_PUBLIC_POSTHOG_HOST"
+    }
+  }
+}

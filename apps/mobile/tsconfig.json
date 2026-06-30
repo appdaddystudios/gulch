@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "moduleResolution": "Bundler",
+    "noUncheckedIndexedAccess": true,
+    "types": ["vitest"]
+  },
+  "include": ["app/**/*.tsx", "lib/**/*.ts", "*.ts", "*.js", "*.d.ts"]
+}
