@@ -121,7 +121,7 @@ describe("Webflow item schemas", () => {
       }
     });
 
-    expect(missingLinkEvent.data.fieldData["external-link"]).toBeUndefined();
+    expect(missingLinkEvent.data.fieldData["external-link"]).toBeNull();
   });
 
   it("rejects empty required strings", () => {
@@ -146,6 +146,21 @@ describe("Webflow item schemas", () => {
         slug: "no-link-event",
         "start-date-time": "2026-07-03T22:00:00.000Z",
         "external-link": null
+      }
+    });
+
+    expect(parsed.data.fieldData["external-link"]).toBeNull();
+    expect(mapEvent(parsed.data).external_link).toBeNull();
+  });
+
+  it("normalizes empty optional event external-link to null", () => {
+    const parsed = parseWebflowItem(webflowEventItemSchema, {
+      ...envelope,
+      fieldData: {
+        name: "Empty Link Event",
+        slug: "empty-link-event",
+        "start-date-time": "2026-07-03T22:00:00.000Z",
+        "external-link": ""
       }
     });
 

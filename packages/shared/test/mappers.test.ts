@@ -72,6 +72,21 @@ describe("Webflow to Supabase mappers", () => {
     });
   });
 
+  it("maps whitespace-only location optionals to null", () => {
+    const mapped = mapLocation({
+      ...envelope,
+      id: "location-empty-optional",
+      lastUpdated: "2026-06-03T12:00:00.000Z",
+      fieldData: {
+        name: "Location Empty Optional",
+        slug: "location-empty-optional",
+        "neighborhood-optional": "   "
+      }
+    });
+
+    expect(mapped.neighborhood).toBeNull();
+  });
+
   it("maps a full event", () => {
     const item = {
       ...envelope,
