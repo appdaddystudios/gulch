@@ -1,17 +1,21 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Badge } from "./Badge";
-import { GulchLogo, MailIcon } from "./icons";
+import { GulchLogo, HeartIcon, MailIcon } from "./icons";
 import type { EventListItem } from "../lib/events";
+import { formatEventTimeCompact } from "../lib/format";
 import { color, radius, space, type as typePreset } from "../theme";
 
 const IMAGE_SIZE = 104;
+const BOOKMARK_SIZE = 44;
 
 type EventCardProps = {
   readonly event: EventListItem;
   readonly onPress?: () => void;
   readonly editorsPick?: boolean;
   readonly sponsored?: boolean;
+  readonly saved?: boolean;
+  readonly onToggleSave?: () => void;
 };
 
 export function EventCard({
@@ -19,16 +23,24 @@ export function EventCard({
   onPress,
   editorsPick = false,
   sponsored = false,
+  saved = false,
+  onToggleSave,
 }: EventCardProps) {
   const hasImage = event.imageStatus === "ok" && Boolean(event.imageUrl);
-  const hasLocation = Boolean(event.locationName);
+  const timeLabel = formatEventTimeCompact(event.startAt, {
+    endAt: event.endAt,
+    customTimeDescription: event.customTimeDescription,
+  });
 
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       disabled={!onPress}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, pressed && onPress ? styles.pressed : null]}
+      style={({ pressed }) => [
+        styles.card,
+        pressed && onPress ? styles.pressed : null,
+      ]}
     >
       <View style={styles.imageWrapper}>
         {hasImage ? (
@@ -45,35 +57,48 @@ export function EventCard({
       </View>
 
       <View style={styles.content}>
+        {timeLabel ? (
+          <View style={styles.timePill}>
+            <Text style={styles.timeLabel} numberOfLines={1}>
+              {timeLabel}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.nameBlock}>
           <Text style={styles.name} numberOfLines={2}>
             {event.name}
           </Text>
-          <View style={styles.metaRow}>
-            {event.organizerName ? (
-              <Text style={styles.meta} numberOfLines={1}>
-                {event.organizerName}
-              </Text>
-            ) : null}
-            {event.organizerName && hasLocation ? <View style={styles.dot} /> : null}
-            {hasLocation ? (
-              <Text style={styles.meta} numberOfLines={1}>
-                {event.locationName}
-              </Text>
-            ) : null}
-          </View>
+          {event.organizerName ? (
+            <Text style={styles.meta} numberOfLines={1}>
+              {event.organizerName}
+            </Text>
+          ) : null}
         </View>
 
-        {event.ticketsRequired ? (
+        {editorsPick ? (
+          <Badge label="Editor's Pick" variant="editorsPick" />
+        ) : event.ticketsRequired ? (
           <View style={styles.tixRow}>
-            <MailIcon size={16} color={color.white} />
+            <MailIcon size={16} color={color.khakis} />
             <Text style={styles.tixLabel}>RSVP Required</Text>
           </View>
+        ) : sponsored ? (
+          <Text style={styles.sponsored}>Sponsored</Text>
         ) : null}
-
-        {editorsPick ? <Badge label="Editor's Pick" variant="editorsPick" /> : null}
-        {!editorsPick && sponsored ? <Text style={styles.sponsored}>Sponsored</Text> : null}
       </View>
+
+      <Pressable
+        accessibilityLabel={saved ? "Remove from saved" : "Save event"}
+        accessibilityRole="button"
+        accessibilityState={{ selected: saved }}
+        disabled={!onToggleSave}
+        hitSlop={6}
+        onPress={onToggleSave}
+        style={styles.bookmark}
+      >
+        <HeartIcon size={24} color={saved ? color.gulchGreen : color.white} />
+      </Pressable>
     </Pressable>
   );
 }
@@ -83,7 +108,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     height: 106,
-    overflow: "hidden",
     width: "100%",
   },
   pressed: {
@@ -112,11 +136,25 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    gap: space.sm,
+    gap: space.xs,
     height: "100%",
     justifyContent: "center",
-    paddingHorizontal: space.lg,
+    paddingLeft: space.lg,
     paddingVertical: space.md,
+  },
+  timePill: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: color.darkChocolate,
+    borderRadius: radius.pill,
+    height: 20,
+    justifyContent: "center",
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+  },
+  timeLabel: {
+    ...typePreset.label10Medium,
+    color: color.khakis,
   },
   nameBlock: {
     alignItems: "flex-start",
@@ -125,21 +163,9 @@ const styles = StyleSheet.create({
     ...typePreset.captionBold12,
     color: color.white,
   },
-  metaRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: space.md,
-  },
   meta: {
     ...typePreset.caption12,
     color: color.khakis,
-    flexShrink: 1,
-  },
-  dot: {
-    backgroundColor: color.khakis,
-    borderRadius: 2,
-    height: 4,
-    width: 4,
   },
   tixRow: {
     alignItems: "center",
@@ -148,10 +174,18 @@ const styles = StyleSheet.create({
   },
   tixLabel: {
     ...typePreset.label10Regular,
-    color: color.white,
+    color: color.khakis,
   },
   sponsored: {
     ...typePreset.label10Regular,
     color: color.beige300,
+  },
+  bookmark: {
+    alignItems: "center",
+    backgroundColor: color.darkChocolate,
+    borderRadius: BOOKMARK_SIZE / 2,
+    height: BOOKMARK_SIZE,
+    justifyContent: "center",
+    width: BOOKMARK_SIZE,
   },
 });

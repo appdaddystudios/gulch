@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { getEventDetail, listUpcomingEvents } from "./events";
+import {
+  getEventDetail,
+  groupEventsByWeek,
+  listEventsByIds,
+  listUpcomingEvents,
+  type EventListItem,
+} from "./events";
 
 type QueryResult = { data: unknown; error: unknown };
 
@@ -10,6 +16,7 @@ const makeBuilder = (result: QueryResult) => {
     "select",
     "gte",
     "eq",
+    "in",
     "order",
     "limit",
     "maybeSingle",
@@ -52,6 +59,7 @@ describe("listUpcomingEvents", () => {
         name: "GULCH Mag Launch",
         startAt: "2026-07-01T00:00:00Z",
         endAt: null,
+        customTimeDescription: null,
         imageUrl: "https://cdn.example.com/evt-1.jpg",
         imageStatus: "ok",
         ticketsRequired: true,
@@ -140,5 +148,78 @@ describe("getEventDetail", () => {
     await expect(
       getEventDetail(makeClient({ data: null, error }), "evt-1"),
     ).rejects.toThrow("boom");
+  });
+});
+
+describe("listEventsByIds", () => {
+  it("returns an empty array without querying when ids is empty", async () => {
+    const client = {
+      from: () => {
+        throw new Error("should not query");
+      },
+    } as never;
+    await expect(listEventsByIds(client, [])).resolves.toEqual([]);
+  });
+
+  it("maps matched rows", async () => {
+    const result = await listEventsByIds(
+      makeClient({ data: [baseRow], error: null }),
+      ["evt-1"],
+    );
+    expect(result[0]?.id).toBe("evt-1");
+  });
+
+  it("throws when Supabase returns an error", async () => {
+    const error = new Error("rls denied");
+    await expect(
+      listEventsByIds(makeClient({ data: null, error }), ["evt-1"]),
+    ).rejects.toThrow("rls denied");
+  });
+});
+
+describe("groupEventsByWeek", () => {
+  const mk = (id: string, startAt: string): EventListItem => ({
+    id,
+    name: id,
+    startAt,
+    endAt: null,
+    customTimeDescription: null,
+    imageUrl: null,
+    imageStatus: "ok",
+    ticketsRequired: false,
+    externalLink: null,
+    organizerName: null,
+    locationName: null,
+  });
+
+  it("buckets events into week sections, oldest first", () => {
+    const sections = groupEventsByWeek(
+      [
+        mk("a", "2025-06-05T17:00:00Z"), // week of Jun 1
+        mk("b", "2025-06-12T17:00:00Z"), // week of Jun 8
+        mk("c", "2025-06-06T17:00:00Z"), // week of Jun 1
+      ],
+      "UTC",
+    );
+
+    expect(sections).toEqual([
+      {
+        key: "2025-06-01",
+        title: "Jun 1 – 7",
+        data: [
+          expect.objectContaining({ id: "a" }),
+          expect.objectContaining({ id: "c" }),
+        ],
+      },
+      {
+        key: "2025-06-08",
+        title: "Jun 8 – 14",
+        data: [expect.objectContaining({ id: "b" })],
+      },
+    ]);
+  });
+
+  it("returns an empty array for no events", () => {
+    expect(groupEventsByWeek([], "UTC")).toEqual([]);
   });
 });

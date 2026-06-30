@@ -1,6 +1,8 @@
 import type { DbClient } from "@gulch/db";
 import { z } from "zod";
 
+import { formatWeekRange, weekStartKey } from "./format";
+
 export type EventImageStatus = "pending" | "ok" | "failed" | "unavailable";
 
 export type EventListItem = {
@@ -8,6 +10,9 @@ export type EventListItem = {
   readonly name: string;
   readonly startAt: string;
   readonly endAt: string | null;
+  // Free-text time override (e.g. "Doors at 6, show at 7"); preferred over the
+  // formatted start/end whenever present, on cards and the detail page alike.
+  readonly customTimeDescription: string | null;
   readonly imageUrl: string | null;
   readonly imageStatus: EventImageStatus;
   readonly ticketsRequired: boolean;
@@ -16,16 +21,11 @@ export type EventListItem = {
   readonly locationName: string | null;
 };
 
-export type EventDetail = EventListItem & {
-  readonly customTimeDescription: string | null;
-};
+export type EventDetail = EventListItem;
 
 // PostgREST select used by every events query in the app.
 export const EVENT_SELECT =
-  "webflow_item_id, name, start_at, end_at, image_url, image_status, tickets_required, external_link, locations(name), event_organizers(organizers(name))";
-
-// Detail view also needs the free-text time override.
-export const EVENT_DETAIL_SELECT = `${EVENT_SELECT}, custom_time_description`;
+  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, external_link, locations(name), event_organizers(organizers(name))";
 
 const namedSchema = z.object({ name: z.string() });
 
@@ -42,6 +42,7 @@ const rawEventSchema = z.object({
   start_at: z.string(),
   end_at: z.string().nullable(),
   image_url: z.string().nullable(),
+  custom_time_description: z.string().nullable().optional(),
   image_status: z.enum(["pending", "ok", "failed", "unavailable"]),
   tickets_required: z.boolean(),
   external_link: z.string().nullable(),
@@ -78,6 +79,7 @@ export const toEventListItem = (raw: RawEvent): EventListItem => ({
   name: raw.name,
   startAt: raw.start_at,
   endAt: raw.end_at,
+  customTimeDescription: raw.custom_time_description ?? null,
   imageUrl: raw.image_url,
   imageStatus: raw.image_status,
   ticketsRequired: raw.tickets_required,
@@ -112,16 +114,56 @@ export const listUpcomingEvents = async (
   return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
 };
 
-const rawEventDetailSchema = rawEventSchema.extend({
-  custom_time_description: z.string().nullable(),
-});
+// Events matching a set of ids (for the saved/lineup list), soonest first.
+export const listEventsByIds = async (
+  client: DbClient,
+  ids: readonly string[],
+): Promise<readonly EventListItem[]> => {
+  if (ids.length === 0) {
+    return [];
+  }
 
-type RawEventDetail = z.infer<typeof rawEventDetailSchema>;
+  const { data, error } = await client
+    .from("events")
+    .select(EVENT_SELECT)
+    .in("webflow_item_id", ids as string[])
+    .order("start_at", { ascending: true });
 
-export const toEventDetail = (raw: RawEventDetail): EventDetail => ({
-  ...toEventListItem(raw),
-  customTimeDescription: raw.custom_time_description,
-});
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
+};
+
+export type EventWeekSection = {
+  readonly key: string;
+  readonly title: string;
+  readonly data: readonly EventListItem[];
+};
+
+// Buckets events into week sections (Sunday-start), oldest week first.
+// Assumes `events` is already ordered by start time (as listUpcomingEvents returns).
+export const groupEventsByWeek = (
+  events: readonly EventListItem[],
+  timeZone?: string,
+): readonly EventWeekSection[] => {
+  const buckets = new Map<string, EventListItem[]>();
+
+  for (const event of events) {
+    const key = weekStartKey(event.startAt, timeZone);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      bucket.push(event);
+    } else {
+      buckets.set(key, [event]);
+    }
+  }
+
+  return [...buckets.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, data]) => ({ key, title: formatWeekRange(key), data }));
+};
 
 // Single event by its Webflow item id (null when not found).
 export const getEventDetail = async (
@@ -130,7 +172,7 @@ export const getEventDetail = async (
 ): Promise<EventDetail | null> => {
   const { data, error } = await client
     .from("events")
-    .select(EVENT_DETAIL_SELECT)
+    .select(EVENT_SELECT)
     .eq("webflow_item_id", id)
     .maybeSingle();
 
@@ -138,5 +180,5 @@ export const getEventDetail = async (
     throw error;
   }
 
-  return data ? toEventDetail(rawEventDetailSchema.parse(data)) : null;
+  return data ? toEventListItem(rawEventSchema.parse(data)) : null;
 };

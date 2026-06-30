@@ -18,15 +18,17 @@ import { EmptyState } from "../../components/EmptyState";
 import { Header } from "../../components/Header";
 import {
   BookmarkIcon,
+  DotsHorizontalIcon,
   GulchLogo,
   MarkerPinIcon,
   ShareIcon,
   TicketIcon,
 } from "../../components/icons";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
+import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { getEventDetail, type EventDetail } from "../../lib/events";
 import { formatEventDateTime } from "../../lib/format";
-import { color, font, space, type as typePreset } from "../../theme";
+import { color, font, radius, space, type as typePreset } from "../../theme";
 
 export default function EventDetailScreen() {
   const router = useRouter();
@@ -47,33 +49,51 @@ export default function EventDetailScreen() {
     }
   };
 
-  const shareAction =
-    state.status === "ready" && state.data?.externalLink ? (
-      <Pressable
-        accessibilityLabel="Open event link"
-        accessibilityRole="button"
-        onPress={() => openExternal(state.data?.externalLink ?? null)}
-      >
-        <ShareIcon size={18} color={color.khakis} />
-      </Pressable>
+  const externalLink =
+    state.status === "ready" ? (state.data?.externalLink ?? null) : null;
+
+  const rightAction =
+    state.status === "ready" && state.data ? (
+      <>
+        <Pressable
+          accessibilityLabel="Open event link"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => openExternal(externalLink)}
+        >
+          <ShareIcon size={24} color={color.khakis} />
+        </Pressable>
+        {/* TODO: overflow menu (report, etc.) — not built yet. */}
+        <Pressable
+          accessibilityLabel="More options"
+          accessibilityRole="button"
+          hitSlop={8}
+        >
+          <DotsHorizontalIcon size={24} color={color.khakis} />
+        </Pressable>
+      </>
     ) : null;
 
   return (
     <View style={styles.screen}>
-      <Header showBack onBack={() => router.back()} rightAction={shareAction} />
-      <Content state={state} onOpenExternal={openExternal} />
+      <Header
+        showBack
+        showLogo={false}
+        onBack={() => router.back()}
+        rightAction={rightAction}
+      />
+      <Content state={state} />
     </View>
   );
 }
 
 function Content({
   state,
-  onOpenExternal,
 }: {
   readonly state: QueryState<EventDetail | null>;
-  readonly onOpenExternal: (url: string | null) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { isSaved, toggle } = useSavedEvents();
 
   if (state.status === "loading") {
     return (
@@ -176,27 +196,31 @@ function Content({
         </View>
       </ScrollView>
 
-      {/* TODO: wire Save-to-Lineup + Export-to-Calendar once those features land. */}
       <View
         style={[
           styles.stickyButtons,
           { paddingBottom: Math.max(insets.bottom, space.md) },
         ]}
       >
-        <Button
-          label="Save to Your Lineup"
-          size="l"
-          tone="light"
-          fullWidth
-          leftIcon={<BookmarkIcon size={16} color={color.oreo} />}
-        />
-        <Button
-          label="Export to Your Calendar"
-          size="l"
-          tone="dark"
-          fullWidth
-          leftIcon={<ShareIcon size={16} color={color.white} />}
-        />
+        <Pressable
+          accessibilityLabel={
+            isSaved(event.id)
+              ? "Remove from Your Lineup"
+              : "Save to Your Lineup"
+          }
+          accessibilityRole="button"
+          accessibilityState={{ selected: isSaved(event.id) }}
+          onPress={() => toggle(event.id)}
+          style={({ pressed }) => [
+            styles.saveButton,
+            pressed ? styles.saved : null,
+          ]}
+        >
+          <BookmarkIcon size={16} color={color.oreo} />
+          <Text style={styles.saveLabel}>
+            {isSaved(event.id) ? "Saved to Your Lineup" : "Save to Your Lineup"}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -271,9 +295,34 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   stickyButtons: {
-    backgroundColor: color.darkChocolate,
-    gap: space.md,
+    backgroundColor: color.oreo,
     paddingHorizontal: space.xl,
     paddingTop: space.md,
+  },
+  saveButton: {
+    alignItems: "center",
+    backgroundColor: color.white,
+    borderColor: color.khakis,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: space.sm,
+    height: 48,
+    justifyContent: "center",
+    // Hard offset shadow (2px 2px 0 #DBD1C3).
+    shadowColor: color.khakis,
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+    width: "100%",
+  },
+  saved: {
+    opacity: 0.7,
+  },
+  saveLabel: {
+    ...typePreset.body16,
+    color: color.oreo,
+    fontFamily: font.medium,
   },
 });

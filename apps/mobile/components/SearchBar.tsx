@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
-import { SearchIcon } from "./icons";
+import { CloseIcon, SearchIcon } from "./icons";
 import { color, hardShadow, radius, space, type as typePreset } from "../theme";
 
 const DEFAULT_PLACEHOLDER = "Search by event, location, or organization";
@@ -59,6 +59,16 @@ export function SearchBar({
           value={value}
         />
       </View>
+      {value && onChangeText ? (
+        <Pressable
+          accessibilityLabel="Clear search"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => onChangeText("")}
+        >
+          <CloseIcon size={18} color={color.grey80} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
