@@ -24,14 +24,19 @@ export type GeocoderOptions = {
   readonly token: string;
   readonly fetch?: FetchLike;
   readonly cache?: Map<string, GeocodeResult>;
+  readonly minRelevance?: number;
 };
+
+export const GEORGIA_BBOX = "-85.61,30.36,-80.84,35.00";
+export const MIN_RELEVANCE = 0.8;
 
 const mapboxResponseSchema = z
   .object({
     features: z.array(
       z
         .object({
-          center: z.tuple([z.number(), z.number()])
+          center: z.tuple([z.number(), z.number()]),
+          relevance: z.number().default(0)
         })
         .passthrough()
     )
@@ -41,6 +46,7 @@ const mapboxResponseSchema = z
 export function createGeocoder(options: GeocoderOptions): Geocoder {
   const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
   const cache = options.cache ?? new Map<string, GeocodeResult>();
+  const minRelevance = options.minRelevance ?? MIN_RELEVANCE;
 
   return {
     async geocode(address) {
@@ -61,9 +67,10 @@ export function createGeocoder(options: GeocoderOptions): Geocoder {
         throw new Error(`Invalid Mapbox geocode response: ${details}`);
       }
 
-      const [longitude, latitude] = parsed.data.features[0]?.center ?? [];
+      const feature = parsed.data.features[0];
+      const [longitude, latitude] = feature?.center ?? [];
       const result: GeocodeResult =
-        longitude === undefined || latitude === undefined
+        feature === undefined || longitude === undefined || latitude === undefined || feature.relevance < minRelevance
           ? { latitude: null, longitude: null, status: "failed" }
           : { latitude, longitude, status: "ok" };
       cache.set(key, result);
@@ -83,7 +90,7 @@ function buildGeocodeUrl(address: string, token: string): URL {
   );
   url.searchParams.set("access_token", token);
   url.searchParams.set("proximity", "-84.39,33.75");
-  url.searchParams.set("bbox", "-84.55,33.65,-84.29,33.89");
+  url.searchParams.set("bbox", GEORGIA_BBOX);
   url.searchParams.set("limit", "1");
   url.searchParams.set("country", "us");
   return url;

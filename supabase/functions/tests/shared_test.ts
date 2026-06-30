@@ -1,5 +1,5 @@
 import { hmacSha256Hex, verifyHmacSha256 } from "../_shared/auth.ts";
-import { geocode } from "../_shared/geocode.ts";
+import { clearGeocodeCache, geocode } from "../_shared/geocode.ts";
 import { mapEvent, mapLocation } from "../_shared/mappers.ts";
 import { reconcile } from "../_shared/reconcile.ts";
 import { fetchLiveItem, fetchLiveItems } from "../_shared/webflow.ts";
@@ -66,19 +66,76 @@ Deno.test("fetchLiveItem uses the single live item endpoint", async () => {
 });
 
 Deno.test("geocode uses Mapbox center as longitude then latitude and returns pending for null address", async () => {
+  clearGeocodeCache();
   assertEquals(await geocode("mapbox", null), { latitude: null, longitude: null, status: "pending" });
+  assertEquals(await geocode("mapbox", "   "), { latitude: null, longitude: null, status: "pending" });
 
   let calledUrl = "";
   const result = await geocode("mapbox", "10 Krog St NE", async (input) => {
     calledUrl = String(input);
-    return new Response(JSON.stringify({ features: [{ center: [-84.36, 33.76] }] }));
+    return new Response(JSON.stringify({ features: [{ center: [-84.36, 33.76], relevance: 1 }] }));
   });
 
   assertEquals(result, { longitude: -84.36, latitude: 33.76, status: "ok" });
   assertMatch(calledUrl, /proximity=-84\.39%2C33\.75/);
-  assertMatch(calledUrl, /bbox=-84\.55%2C33\.65%2C-84\.29%2C33\.89/);
+  assertMatch(calledUrl, /bbox=-85\.61%2C30\.36%2C-80\.84%2C35\.00/);
   assertMatch(calledUrl, /country=us/);
   assertMatch(calledUrl, /limit=1/);
+});
+
+Deno.test("geocode fails low-relevance Mapbox matches instead of storing garbage coordinates", async () => {
+  clearGeocodeCache();
+
+  const result = await geocode("mapbox", "Various Locations", async () =>
+    new Response(JSON.stringify({ features: [{ center: [-83.0, 32.0], relevance: 0.4 }] }))
+  );
+
+  assertEquals(result, { latitude: null, longitude: null, status: "failed" });
+});
+
+Deno.test("geocode fails when Mapbox returns no features or missing relevance", async () => {
+  clearGeocodeCache();
+
+  const noFeatures = await geocode("mapbox", "Unknown address", async () =>
+    new Response(JSON.stringify({ features: [] }))
+  );
+  const missingRelevance = await geocode("mapbox", "DM on Instagram for address", async () =>
+    new Response(JSON.stringify({ features: [{ center: [-83.0, 32.0] }] }))
+  );
+
+  assertEquals(noFeatures, { latitude: null, longitude: null, status: "failed" });
+  assertEquals(missingRelevance, { latitude: null, longitude: null, status: "failed" });
+});
+
+Deno.test("geocode uses normalized address cache keys", async () => {
+  clearGeocodeCache();
+  let calls = 0;
+
+  const first = await geocode("mapbox", "10 Krog St NE", async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ features: [{ center: [-84.36, 33.76], relevance: 1 }] }));
+  });
+  const second = await geocode("mapbox", "10 Krog St NE", async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ features: [{ center: [-1, 1], relevance: 1 }] }));
+  });
+
+  assertEquals(calls, 1);
+  assertEquals(first, { longitude: -84.36, latitude: 33.76, status: "ok" });
+  assertEquals(second, first);
+});
+
+Deno.test("geocode throws on Mapbox errors", async () => {
+  clearGeocodeCache();
+  let thrown = "";
+
+  try {
+    await geocode("mapbox", "10 Krog St NE", async () => new Response("nope", { status: 500 }));
+  } catch (error) {
+    thrown = error instanceof Error ? error.message : String(error);
+  }
+
+  assertMatch(thrown, /Mapbox geocode failed: 500/);
 });
 
 Deno.test("reconcile skips unchanged items and reuses unchanged location geocode fields", async () => {

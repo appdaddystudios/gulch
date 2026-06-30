@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
     "build": "true",
-    "seed": "tsx src/cli.ts"
+    "seed": "tsx src/cli.ts",
+    "regeocode": "tsx src/regeocode-cli.ts"
   },
   "dependencies": {
     "@gulch/db": "workspace:*",
