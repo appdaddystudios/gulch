@@ -67,6 +67,8 @@ const showItem = {
   }
 };
 
+const noopDeleteAll = async () => ({ error: null });
+
 describe("runSeed", () => {
   afterEach(() => {
     vi.resetModules();
@@ -81,6 +83,7 @@ describe("runSeed", () => {
     }[] = [];
     const geocodedAddresses: string[] = [];
     const db: PipelineDbClient = {
+      deleteAll: noopDeleteAll,
       from: (table) => ({
         upsert: async (rows, options) => {
           upserts.push({ table, rows, onConflict: options.onConflict });
@@ -163,6 +166,7 @@ describe("runSeed", () => {
   it("logs dangling managing organizer and event organizer skips", async () => {
     const info = vi.fn();
     const db: PipelineDbClient = {
+      deleteAll: noopDeleteAll,
       from: () => ({
         upsert: async () => ({ error: null })
       })
@@ -197,6 +201,10 @@ describe("runSeed", () => {
   it("is idempotent across repeated seeds", async () => {
     const rowsByTable = new Map<string, Map<string, Insert>>();
     const db: PipelineDbClient = {
+      deleteAll: async (table) => {
+        rowsByTable.set(table, new Map());
+        return { error: null };
+      },
       from: (table) => ({
         upsert: async (rows, options) => {
           const tableRows = rowsByTable.get(table) ?? new Map<string, Insert>();
@@ -251,6 +259,93 @@ describe("runSeed", () => {
     expect(rowsByTable.get("event_organizers")?.size).toBe(1);
   });
 
+  it("removes stale event organizer rows after re-seed with shrunk organizers", async () => {
+    const eventOrganizerRows = new Map<string, Insert>();
+    const db: PipelineDbClient = {
+      deleteAll: async (table) => {
+        if (table === "event_organizers") {
+          eventOrganizerRows.clear();
+        }
+        return { error: null };
+      },
+      from: (table) => ({
+        upsert: async (rows, options) => {
+          if (table === "event_organizers" && options.onConflict === "event_id,organizer_id") {
+            for (const row of rows) {
+              if ("event_id" in row && "organizer_id" in row) {
+                eventOrganizerRows.set(`${row.event_id}:${row.organizer_id}`, row);
+              }
+            }
+          }
+          return { error: null };
+        }
+      })
+    };
+    let organizerRefs: readonly string[] = ["organizer-1", "organizer-2"];
+    const options = {
+      webflow: {
+        fetchAllItems: async (collectionId: string) => {
+          if (collectionId === WEBFLOW_COLLECTION_IDS.organizers) {
+            return [organizerItem("organizer-1"), organizerItem("organizer-2")];
+          }
+          if (collectionId === WEBFLOW_COLLECTION_IDS.events) {
+            return [eventItem(organizerRefs)];
+          }
+          return [];
+        }
+      },
+      geocoder: {
+        geocode: async () => ({ latitude: 33.772, longitude: -84.371, status: "ok" as const })
+      },
+      db
+    };
+
+    await runSeed(options);
+    organizerRefs = ["organizer-1"];
+    const summary = await runSeed(options);
+
+    expect([...eventOrganizerRows.keys()]).toEqual(["event-1:organizer-1"]);
+    expect(summary.eventOrganizers).toMatchObject({ derived: 1, upserted: 1, skipped: 0 });
+  });
+
+  it("clears event organizer rows when the derived set is empty", async () => {
+    const eventOrganizerRows = new Map<string, Insert>([
+      ["event-1:organizer-1", { event_id: "event-1", organizer_id: "organizer-1" }]
+    ]);
+    const db: PipelineDbClient = {
+      deleteAll: async (table) => {
+        if (table === "event_organizers") {
+          eventOrganizerRows.clear();
+        }
+        return { error: null };
+      },
+      from: () => ({
+        upsert: async () => ({ error: null })
+      })
+    };
+
+    const summary = await runSeed({
+      webflow: {
+        fetchAllItems: async (collectionId) => {
+          if (collectionId === WEBFLOW_COLLECTION_IDS.organizers) {
+            return [organizerItem("organizer-1")];
+          }
+          if (collectionId === WEBFLOW_COLLECTION_IDS.events) {
+            return [eventItem([])];
+          }
+          return [];
+        }
+      },
+      geocoder: {
+        geocode: async () => ({ latitude: 33.772, longitude: -84.371, status: "ok" })
+      },
+      db
+    });
+
+    expect(eventOrganizerRows.size).toBe(0);
+    expect(summary.eventOrganizers).toMatchObject({ derived: 0, upserted: 0, skipped: 0 });
+  });
+
   it("skips event organizer rows with dangling event ids", async () => {
     vi.doMock("@gulch/shared", async (importOriginal) => {
       const actual = await importOriginal<typeof import("@gulch/shared")>();
@@ -265,6 +360,7 @@ describe("runSeed", () => {
     const { runSeed: runSeedWithMock, WEBFLOW_COLLECTION_IDS: mockedIds } = await import("../src/seed");
     const upserts: { readonly table: string; readonly rows: readonly Insert[] }[] = [];
     const db: PipelineDbClient = {
+      deleteAll: noopDeleteAll,
       from: (table) => ({
         upsert: async (rows) => {
           upserts.push({ table, rows });
@@ -300,6 +396,7 @@ describe("runSeed", () => {
 
   it("counts failed geocodes without failing the seed", async () => {
     const db: PipelineDbClient = {
+      deleteAll: noopDeleteAll,
       from: () => ({
         upsert: async () => ({ error: null })
       })
@@ -330,6 +427,7 @@ describe("runSeed", () => {
 
   it("wraps stage errors with table and stage context", async () => {
     const db: PipelineDbClient = {
+      deleteAll: noopDeleteAll,
       from: () => ({
         upsert: async () => ({ error: { message: "permission denied" } })
       })

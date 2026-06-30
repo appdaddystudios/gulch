@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PipelineDbClient } from "../src/seed";
+type FakeSupabaseClient = {
+  readonly from: () => {
+    readonly upsert: () => Promise<{ readonly error: null }>;
+    readonly delete: () => {
+      readonly not: () => Promise<{ readonly error: null }>;
+    };
+  };
+};
 
-let fakeDb: PipelineDbClient;
+let fakeDb: FakeSupabaseClient;
 
 vi.mock("@gulch/db", () => ({
   createDbClient: vi.fn(() => fakeDb)
@@ -42,7 +49,10 @@ beforeEach(() => {
   process.env = { ...originalEnv };
   fakeDb = {
     from: () => ({
-      upsert: async () => ({ error: null })
+      upsert: async () => ({ error: null }),
+      delete: () => ({
+        not: async () => ({ error: null })
+      })
     })
   };
 });

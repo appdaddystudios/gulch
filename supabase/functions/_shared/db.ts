@@ -12,6 +12,12 @@ export type ExistingRow = {
   longitude?: number | null;
   geocode_status?: "pending" | "ok" | "failed" | "manual" | null;
   geocoded_at?: string | null;
+  managing_organizer_id?: string | null;
+};
+
+export type ManagingOrganizerRefUpdate = {
+  locationId: string;
+  managingOrganizerId: string | null;
 };
 
 export function createServiceClient(): SupabaseClient {
@@ -30,7 +36,7 @@ export async function upsertRows(client: SupabaseClient, table: TableName, rows:
 
 export async function loadExistingRows(client: SupabaseClient, table: CollectionName): Promise<ExistingRow[]> {
   const columns = table === "locations"
-    ? "webflow_item_id,webflow_last_updated,name_address,latitude,longitude,geocode_status,geocoded_at"
+    ? "webflow_item_id,webflow_last_updated,name_address,latitude,longitude,geocode_status,geocoded_at,managing_organizer_id"
     : "webflow_item_id,webflow_last_updated";
   const { data, error } = await client.from(table).select(columns);
   if (error) throw error;
@@ -68,4 +74,33 @@ export async function replaceEventOrganizers(
   const { error: insertError } = await client.from("event_organizers").insert(guardedRows);
   if (insertError) throw insertError;
   return { inserted: guardedRows.length, skipped };
+}
+
+export async function replaceAllEventOrganizers(
+  client: SupabaseClient,
+  rows: readonly EventOrganizerRow[]
+): Promise<{ inserted: number }> {
+  const { error: deleteError } = await client.from("event_organizers").delete().not("event_id", "is", null);
+  if (deleteError) throw deleteError;
+
+  if (rows.length === 0) return { inserted: 0 };
+
+  const { error: insertError } = await client.from("event_organizers").insert(rows);
+  if (insertError) throw insertError;
+  return { inserted: rows.length };
+}
+
+export async function updateLocationManagingOrganizerRefs(
+  client: SupabaseClient,
+  updates: readonly ManagingOrganizerRefUpdate[]
+): Promise<{ updated: number }> {
+  for (const update of updates) {
+    const { error } = await client
+      .from("locations")
+      .update({ managing_organizer_id: update.managingOrganizerId })
+      .eq("webflow_item_id", update.locationId);
+    if (error) throw error;
+  }
+
+  return { updated: updates.length };
 }

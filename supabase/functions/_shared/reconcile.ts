@@ -1,4 +1,4 @@
-import { type ExistingRow } from "./db.ts";
+import { type ExistingRow, type ManagingOrganizerRefUpdate } from "./db.ts";
 import { type GeocodeResult } from "./geocode.ts";
 import {
   deriveEventOrganizers,
@@ -113,4 +113,35 @@ export async function reconcile(
     summary: { scanned: rawItems.length, upserted: rows.length, geocoded: 0, failed: 0 },
     eventOrganizerReplacements
   };
+}
+
+export function deriveGuardedEventOrganizers(
+  rawEvents: readonly WebflowItem[],
+  knownOrganizerIds: ReadonlySet<string>,
+  knownEventIds: ReadonlySet<string>
+): { rows: EventOrganizerRow[]; derived: number; skipped: number } {
+  const derivedRows = rawEvents.flatMap((item) => deriveEventOrganizers(item));
+  const rows = derivedRows.filter((row) => knownOrganizerIds.has(row.organizer_id) && knownEventIds.has(row.event_id));
+
+  return { rows, derived: derivedRows.length, skipped: derivedRows.length - rows.length };
+}
+
+export function reconcileManagingOrganizerRefs(
+  rawLocations: readonly WebflowItem[],
+  existingLocationsById: ReadonlyMap<string, ExistingRow>,
+  knownOrganizerIds: ReadonlySet<string>
+): ManagingOrganizerRefUpdate[] {
+  return rawLocations.flatMap((item) => {
+    const row = mapLocation(item);
+    const computed = row.managing_organizer_id && knownOrganizerIds.has(row.managing_organizer_id)
+      ? row.managing_organizer_id
+      : null;
+    const existing = existingLocationsById.get(row.webflow_item_id);
+
+    if (!existing || (existing.managing_organizer_id ?? null) === computed) {
+      return [];
+    }
+
+    return [{ locationId: row.webflow_item_id, managingOrganizerId: computed }];
+  });
 }

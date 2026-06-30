@@ -2,7 +2,7 @@ import { createDbClient } from "@gulch/db";
 import { z } from "zod";
 
 import { createGeocoder } from "./geocoder";
-import { runSeed } from "./seed";
+import { runSeed, type PipelineDbClient } from "./seed";
 import { createWebflowClient } from "./webflow-client";
 
 type ProcessEnv = Record<string, string | undefined>;
@@ -33,13 +33,24 @@ export function parseCliEnv(env: ProcessEnv): z.infer<typeof cliEnvSchema> {
 
 export async function main(): Promise<void> {
   const env = parseCliEnv(process.env);
+  const supabase = createDbClient({
+    SUPABASE_URL: env.EXPO_PUBLIC_SUPABASE_URL,
+    SUPABASE_KEY: env.SUPABASE_SERVICE_ROLE_KEY
+  });
+  const db: PipelineDbClient = {
+    deleteAll: async (table) => {
+      const { error } = await supabase.from(table).delete().not("event_id", "is", null);
+      return { error };
+    },
+    from: (table) => ({
+      upsert: (rows, options) => supabase.from(table).upsert([...rows], options)
+    })
+  };
+
   const summary = await runSeed({
     webflow: createWebflowClient({ token: env.GULCH_WEBFLOW_API_KEY, fetch: globalThis.fetch.bind(globalThis) }),
     geocoder: createGeocoder({ token: env.MAPBOX_TOKEN, fetch: globalThis.fetch.bind(globalThis) }),
-    db: createDbClient({
-      SUPABASE_URL: env.EXPO_PUBLIC_SUPABASE_URL,
-      SUPABASE_KEY: env.SUPABASE_SERVICE_ROLE_KEY
-    }),
+    db,
     logger: console
   });
 

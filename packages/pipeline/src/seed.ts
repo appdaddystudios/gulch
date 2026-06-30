@@ -28,6 +28,9 @@ export type PipelineGeocoder = {
 };
 
 export type PipelineDbClient = {
+  readonly deleteAll: (
+    table: "event_organizers"
+  ) => PromiseLike<{ readonly error: null | { readonly message: string } }>;
   readonly from: (table: TableName) => {
     readonly upsert: (
       rows: readonly PipelineInsert[],
@@ -97,7 +100,7 @@ export async function runSeed(options: RunSeedOptions): Promise<SeedSummary> {
   await upsertRows(options.db, "shows", shows);
 
   const eventOrganizers = deriveAndGuardEventOrganizers(rawEvents, knownOrganizerIds, knownEventIds, options.logger);
-  await upsertRows(options.db, "event_organizers", eventOrganizers.rows);
+  await replaceEventOrganizers(options.db, eventOrganizers.rows);
 
   return {
     organizers: {
@@ -214,6 +217,22 @@ function deriveAndGuardEventOrganizers(
   }
 
   return { rows, derived: derivedRows.length, skipped };
+}
+
+async function replaceEventOrganizers(
+  db: PipelineDbClient,
+  rows: readonly EventOrganizerInsert[]
+): Promise<void> {
+  try {
+    const result = await db.deleteAll("event_organizers");
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+  } catch (error) {
+    throw withStage("event_organizers", "delete", error);
+  }
+
+  await upsertRows(db, "event_organizers", rows);
 }
 
 async function upsertRows(

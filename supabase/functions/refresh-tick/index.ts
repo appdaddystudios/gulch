@@ -3,41 +3,47 @@ import {
   createServiceClient,
   existingByIdLastUpdated,
   existingLocationById,
-  loadKnownOrganizerIds,
   loadExistingRows,
-  replaceEventOrganizers,
+  replaceAllEventOrganizers,
+  updateLocationManagingOrganizerRefs,
   type TableName,
-  type ExistingRow
+  type ExistingRow,
+  type ManagingOrganizerRefUpdate
 } from "../_shared/db.ts";
 import { geocode, type GeocodeResult } from "../_shared/geocode.ts";
 import { type EventOrganizerRow, type UpsertRow } from "../_shared/mappers.ts";
-import { reconcile, type ReconcileSummary } from "../_shared/reconcile.ts";
+import {
+  deriveGuardedEventOrganizers,
+  reconcile,
+  reconcileManagingOrganizerRefs,
+  type ReconcileSummary
+} from "../_shared/reconcile.ts";
 import { COLLECTIONS, type CollectionName, type WebflowItem } from "../_shared/schemas.ts";
 import { fetchLiveItems, type FetchLike } from "../_shared/webflow.ts";
 
 type ExistingLoader = (table: CollectionName) => Promise<ExistingRow[]>;
 type FetchItems = (token: string, collectionId: string) => Promise<WebflowItem[]>;
 type UpsertFn = (table: TableName, rows: readonly UpsertRow[]) => Promise<void>;
-type ReplaceEventOrganizersFn = (
-  eventId: string,
-  rows: readonly EventOrganizerRow[],
-  knownOrganizerIds: ReadonlySet<string>
-) => Promise<{ inserted: number; skipped: number }>;
+type ReplaceAllEventOrganizersFn = (rows: readonly EventOrganizerRow[]) => Promise<{ inserted: number }>;
+type UpdateManagingOrganizerRefsFn = (
+  updates: readonly ManagingOrganizerRefUpdate[]
+) => Promise<{ updated: number }>;
 
 export type RefreshDeps = {
   env?: (key: string) => string | undefined;
   fetcher?: FetchLike;
   fetchItems?: FetchItems;
   loadExisting?: ExistingLoader;
-  loadKnownOrganizerIds?: () => Promise<Set<string>>;
   upsert?: UpsertFn;
-  replaceEventOrganizers?: ReplaceEventOrganizersFn;
+  replaceAllEventOrganizers?: ReplaceAllEventOrganizersFn;
+  updateManagingOrganizerRefs?: UpdateManagingOrganizerRefsFn;
   geocoder?: (address: string | null) => Promise<GeocodeResult>;
   now?: () => string;
 };
 
 type Summary = Record<CollectionName, ReconcileSummary> & {
-  eventOrganizers: { replaced: number; inserted: number; skipped: number };
+  eventOrganizers: { derived: number; replaced: number; skipped: number };
+  managingRefs: { updated: number };
 };
 
 const ORDER: CollectionName[] = ["organizers", "locations", "events", "shows"];
@@ -52,16 +58,14 @@ async function defaultUpsert(table: TableName, rows: readonly UpsertRow[]): Prom
   await upsertRows(createServiceClient(), table, rows);
 }
 
-async function defaultLoadKnownOrganizerIds(): Promise<Set<string>> {
-  return loadKnownOrganizerIds(createServiceClient());
+async function defaultReplaceAllEventOrganizers(rows: readonly EventOrganizerRow[]): Promise<{ inserted: number }> {
+  return replaceAllEventOrganizers(createServiceClient(), rows);
 }
 
-async function defaultReplaceEventOrganizers(
-  eventId: string,
-  rows: readonly EventOrganizerRow[],
-  knownOrganizerIds: ReadonlySet<string>
-): Promise<{ inserted: number; skipped: number }> {
-  return replaceEventOrganizers(createServiceClient(), eventId, rows, knownOrganizerIds);
+async function defaultUpdateManagingOrganizerRefs(
+  updates: readonly ManagingOrganizerRefUpdate[]
+): Promise<{ updated: number }> {
+  return updateLocationManagingOrganizerRefs(createServiceClient(), updates);
 }
 
 async function upsertBatches(table: TableName, rows: readonly UpsertRow[], upsert: UpsertFn): Promise<void> {
@@ -75,9 +79,9 @@ export function createRefreshHandler(deps: RefreshDeps = {}): (request: Request)
   const fetcher = deps.fetcher ?? fetch;
   const fetchItems = deps.fetchItems ?? ((token, collectionId) => fetchLiveItems(token, collectionId, fetcher));
   const loadExisting = deps.loadExisting ?? defaultLoadExisting;
-  const loadOrganizerIds = deps.loadKnownOrganizerIds ?? defaultLoadKnownOrganizerIds;
   const upsert = deps.upsert ?? defaultUpsert;
-  const replaceEventOrgs = deps.replaceEventOrganizers ?? defaultReplaceEventOrganizers;
+  const replaceAllEventOrgs = deps.replaceAllEventOrganizers ?? defaultReplaceAllEventOrganizers;
+  const updateManagingRefs = deps.updateManagingOrganizerRefs ?? defaultUpdateManagingOrganizerRefs;
   const geocoder = deps.geocoder ?? ((address) => geocode(env("MAPBOX_TOKEN") ?? "", address, fetcher));
   const now = deps.now ?? (() => new Date().toISOString());
 
@@ -99,11 +103,17 @@ export function createRefreshHandler(deps: RefreshDeps = {}): (request: Request)
       events: await loadExisting("events"),
       shows: await loadExisting("shows")
     };
-    let knownOrganizerIds = await loadOrganizerIds();
-    const eventOrganizersSummary = { replaced: 0, inserted: 0, skipped: 0 };
+    const fetchedItems = {} as Record<CollectionName, WebflowItem[]>;
+    let knownOrganizerIds = new Set<string>();
 
     for (const table of ORDER) {
       const items = await fetchItems(webflowToken, COLLECTIONS[table]);
+      fetchedItems[table] = items;
+
+      if (table === "organizers") {
+        knownOrganizerIds = new Set(items.map((item) => item.id));
+      }
+
       const result = await reconcile(items, table, {
         geocoder,
         existingByIdLastUpdated: existingByIdLastUpdated(existing[table]),
@@ -113,25 +123,24 @@ export function createRefreshHandler(deps: RefreshDeps = {}): (request: Request)
       });
       await upsertBatches(table, result.rows, upsert);
       summary[table] = result.summary;
-
-      if (table === "organizers") {
-        knownOrganizerIds = new Set([
-          ...knownOrganizerIds,
-          ...result.rows.map((row) => row.webflow_item_id)
-        ]);
-      }
-
-      if (table === "events") {
-        for (const replacement of result.eventOrganizerReplacements ?? []) {
-          const replaced = await replaceEventOrgs(replacement.eventId, replacement.rows, knownOrganizerIds);
-          eventOrganizersSummary.replaced += 1;
-          eventOrganizersSummary.inserted += replaced.inserted;
-          eventOrganizersSummary.skipped += replacement.skipped + replaced.skipped;
-        }
-      }
     }
 
-    summary.eventOrganizers = eventOrganizersSummary;
+    const liveEventIds = new Set((fetchedItems.events ?? []).map((item) => item.id));
+    const eventOrganizers = deriveGuardedEventOrganizers(fetchedItems.events ?? [], knownOrganizerIds, liveEventIds);
+    const replaced = await replaceAllEventOrgs(eventOrganizers.rows);
+    const managingRefUpdates = reconcileManagingOrganizerRefs(
+      fetchedItems.locations ?? [],
+      existingLocationById(existing.locations),
+      knownOrganizerIds
+    );
+    const managingRefs = await updateManagingRefs(managingRefUpdates);
+
+    summary.eventOrganizers = {
+      derived: eventOrganizers.derived,
+      replaced: replaced.inserted,
+      skipped: eventOrganizers.skipped
+    };
+    summary.managingRefs = { updated: managingRefs.updated };
     return jsonResponse(summary);
   };
 }
