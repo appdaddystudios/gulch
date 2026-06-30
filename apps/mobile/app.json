@@ -6,7 +6,10 @@
     "version": "0.0.0",
     "orientation": "portrait",
     "newArchEnabled": true,
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gulch.mobile"

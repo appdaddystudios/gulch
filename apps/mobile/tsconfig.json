@@ -6,5 +6,16 @@
     "noUncheckedIndexedAccess": true,
     "types": ["vitest"]
   },
-  "include": ["app/**/*.tsx", "lib/**/*.ts", "*.ts", "*.js", "*.d.ts"]
+  "include": [
+    "app/**/*.tsx",
+    "app/**/*.ts",
+    "components/**/*.tsx",
+    "components/**/*.ts",
+    "hooks/**/*.ts",
+    "theme/**/*.ts",
+    "lib/**/*.ts",
+    "*.ts",
+    "*.js",
+    "*.d.ts"
+  ]
 }
