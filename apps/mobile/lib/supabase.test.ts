@@ -16,16 +16,16 @@ describe("createMobileSupabase", () => {
   it("returns null when Expo public Supabase env is invalid", () => {
     expect(
       createMobileSupabase({
-        EXPO_PUBLIC_SUPABASE_URL: "not-a-url",
-        EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon"
+        url: "not-a-url",
+        key: "anon"
       })
     ).toBeNull();
   });
 
   it("creates a typed Supabase client from Expo public env", () => {
     const client = createMobileSupabase({
-      EXPO_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
-      EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon"
+      url: "https://example.supabase.co",
+      key: "anon"
     });
 
     expect(client).toEqual({

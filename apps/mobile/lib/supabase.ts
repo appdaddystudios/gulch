@@ -4,11 +4,21 @@ import { createDbClient, type DbClient } from "@gulch/db";
 import { z } from "zod";
 
 const mobileSupabaseEnvSchema = z.object({
-  EXPO_PUBLIC_SUPABASE_URL: z.string().url(),
-  EXPO_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1)
+  url: z.string().url(),
+  key: z.string().min(1)
 });
 
-export const createMobileSupabase = (env: Record<string, string | undefined> = process.env): DbClient | null => {
+type MobileSupabaseEnv = {
+  readonly url?: string;
+  readonly key?: string;
+};
+
+export const createMobileSupabase = (
+  env: MobileSupabaseEnv = {
+    url: process.env.EXPO_PUBLIC_SUPABASE_URL,
+    key: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+  }
+): DbClient | null => {
   const parsed = mobileSupabaseEnvSchema.safeParse(env);
 
   if (!parsed.success) {
@@ -16,7 +26,7 @@ export const createMobileSupabase = (env: Record<string, string | undefined> = p
   }
 
   return createDbClient({
-    SUPABASE_URL: parsed.data.EXPO_PUBLIC_SUPABASE_URL,
-    SUPABASE_KEY: parsed.data.EXPO_PUBLIC_SUPABASE_ANON_KEY
+    SUPABASE_URL: parsed.data.url,
+    SUPABASE_KEY: parsed.data.key
   });
 };

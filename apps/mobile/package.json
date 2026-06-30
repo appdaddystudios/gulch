@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run --coverage",
     "build": "true",
-    "export": "expo export -p ios --output-dir /tmp/gulch-mobile-export"
+    "export": "EXPO_NO_DOTENV=1 expo export -p ios --output-dir /tmp/gulch-mobile-export"
   },
   "dependencies": {
     "@gulch/db": "workspace:*",

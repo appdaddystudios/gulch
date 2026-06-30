@@ -41,9 +41,9 @@ describe("telemetry", () => {
 
   it("initializes and captures when telemetry env is present", async () => {
     await initTelemetry({
-      EXPO_PUBLIC_SENTRY_DSN: "https://public@example.com/1",
-      EXPO_PUBLIC_POSTHOG_KEY: "ph_test",
-      EXPO_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com"
+      sentryDsn: "https://public@example.com/1",
+      posthogKey: "ph_test",
+      posthogHost: "https://us.i.posthog.com"
     });
 
     const error = new Error("reported");

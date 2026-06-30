@@ -1,4 +1,8 @@
-type TelemetryEnv = Record<string, string | undefined>;
+type TelemetryEnv = {
+  readonly sentryDsn?: string;
+  readonly posthogKey?: string;
+  readonly posthogHost?: string;
+};
 type TelemetryProperty = string | number | boolean | null | TelemetryProperty[] | { [key: string]: TelemetryProperty };
 type TelemetryProperties = Record<string, TelemetryProperty>;
 
@@ -12,15 +16,21 @@ let initialized = false;
 
 const hasValue = (value: string | undefined): value is string => typeof value === "string" && value.length > 0;
 
-export const initTelemetry = async (env: TelemetryEnv = process.env): Promise<void> => {
+export const initTelemetry = async (
+  env: TelemetryEnv = {
+    sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+    posthogKey: process.env.EXPO_PUBLIC_POSTHOG_KEY,
+    posthogHost: process.env.EXPO_PUBLIC_POSTHOG_HOST
+  }
+): Promise<void> => {
   if (initialized) {
     return;
   }
 
   initialized = true;
 
-  const sentryDsn = env.EXPO_PUBLIC_SENTRY_DSN;
-  const posthogKey = env.EXPO_PUBLIC_POSTHOG_KEY;
+  const sentryDsn = env.sentryDsn;
+  const posthogKey = env.posthogKey;
 
   if (hasValue(sentryDsn)) {
     sentry = await import("@sentry/react-native");
@@ -30,7 +40,7 @@ export const initTelemetry = async (env: TelemetryEnv = process.env): Promise<vo
   if (hasValue(posthogKey)) {
     const posthogModule = await import("posthog-react-native");
     posthog = new posthogModule.PostHog(posthogKey, {
-      host: env.EXPO_PUBLIC_POSTHOG_HOST
+      host: env.posthogHost
     });
   }
 };
