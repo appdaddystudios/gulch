@@ -41,7 +41,7 @@ Register a Webflow webhook on the Gulch site:
 
 - Site ID: `684345d2fa9a950b8116b072`
 - Trigger type: `collection_item_created`
-- URL: `https://<ref>.supabase.co/functions/v1/webflow-webhook?secret=<GULCH_WEBHOOK_SECRET>`
+- URL: `https://basetbhtpifqbsqmgedv.supabase.co/functions/v1/webflow-webhook?secret=akBzbWluZUBmMG50ZXo0ZXYzciE`
 
 ## 5. Verify
 

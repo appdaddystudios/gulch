@@ -116,6 +116,11 @@ Deno.test("webhook verifies HMAC with separate Webflow signing secret when confi
     upsert: async () => {}
   });
 
+  const missing = await handler(new Request("https://example.test?secret=right", {
+    method: "POST",
+    body
+  }));
+
   const bad = await handler(new Request("https://example.test?secret=right", {
     method: "POST",
     headers: {
@@ -134,13 +139,14 @@ Deno.test("webhook verifies HMAC with separate Webflow signing secret when confi
     body
   }));
 
+  assertEquals(missing.status, 401);
   assertEquals(bad.status, 401);
   assertEquals(good.status, 200);
 });
 
 Deno.test("webhook ignores non-created events with 200", async () => {
   const handler = createWebhookHandler({
-    env: (key) => key === "GULCH_WEBHOOK_SECRET" ? "right" : "unused",
+    env: (key) => key === "GULCH_WEBHOOK_SECRET" ? "right" : undefined,
     upsert: async () => {
       throw new Error("should not upsert");
     }

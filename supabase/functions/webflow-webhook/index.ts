@@ -86,8 +86,11 @@ export function createWebhookHandler(deps: WebhookDeps = {}): (request: Request)
     const signature = request.headers.get("x-webflow-signature");
     const timestamp = request.headers.get("x-webflow-timestamp");
     const signingSecret = env("GULCH_WEBFLOW_SIGNING_SECRET");
-    if (signingSecret && signature && timestamp && !(await verifyHmacSha256(signingSecret, timestamp, rawBody, signature))) {
-      return jsonResponse({ ok: false }, 401);
+    if (signingSecret) {
+      if (!signature || !timestamp) return jsonResponse({ ok: false }, 401);
+      if (!(await verifyHmacSha256(signingSecret, timestamp, rawBody, signature))) {
+        return jsonResponse({ ok: false }, 401);
+      }
     }
 
     const { triggerType, collectionId, itemId } = extractPayload(JSON.parse(rawBody));
