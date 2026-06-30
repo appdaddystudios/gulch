@@ -103,6 +103,19 @@ const ymdInTimeZone = (
   return [year as number, month as number, day as number];
 };
 
+// Calendar-day key (YYYY-MM-DD) for the event's local day.
+export const dayKey = (
+  iso: string,
+  timeZone: string = DEFAULT_TIME_ZONE,
+): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const [year, month, day] = ymdInTimeZone(date, timeZone);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+};
+
 // Sunday-of-the-week date key (YYYY-MM-DD) for the event's local calendar day.
 // Used to bucket events into week groups on the Events list.
 export const weekStartKey = (

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  dayKey,
   formatEventDateTime,
   formatEventTimeCompact,
   formatWeekRange,
@@ -65,6 +66,16 @@ describe("formatEventTimeCompact", () => {
 
   it("returns an empty string for an invalid date", () => {
     expect(formatEventTimeCompact("nope")).toBe("");
+  });
+});
+
+describe("dayKey", () => {
+  it("returns the local calendar day", () => {
+    expect(dayKey("2025-07-07T13:00:00Z", "UTC")).toBe("2025-07-07");
+  });
+
+  it("returns an empty string for an invalid date", () => {
+    expect(dayKey("nope")).toBe("");
   });
 });
 
