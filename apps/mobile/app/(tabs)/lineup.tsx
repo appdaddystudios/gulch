@@ -71,7 +71,10 @@ function Body({
   if (state.status === "error") {
     return (
       <Centered>
-        <EmptyState title="Couldn't load your lineup" subtitle={state.message} />
+        <EmptyState
+          title="Couldn't load your lineup"
+          subtitle={state.message}
+        />
       </Centered>
     );
   }
@@ -118,7 +121,8 @@ function Separator() {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: color.darkChocolate,
+    // Oreo (darker) so the darkChocolate time pill + heart button read on cards.
+    backgroundColor: color.oreo,
     flex: 1,
   },
   listContent: {

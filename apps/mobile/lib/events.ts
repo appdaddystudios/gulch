@@ -16,6 +16,7 @@ export type EventListItem = {
   readonly imageUrl: string | null;
   readonly imageStatus: EventImageStatus;
   readonly ticketsRequired: boolean;
+  readonly editorsPick: boolean;
   readonly externalLink: string | null;
   readonly organizerName: string | null;
   readonly locationName: string | null;
@@ -25,7 +26,7 @@ export type EventDetail = EventListItem;
 
 // PostgREST select used by every events query in the app.
 export const EVENT_SELECT =
-  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, external_link, locations(name), event_organizers(organizers(name))";
+  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, external_link, locations(name), event_organizers(organizers(name))";
 
 const namedSchema = z.object({ name: z.string() });
 
@@ -45,6 +46,8 @@ const rawEventSchema = z.object({
   custom_time_description: z.string().nullable().optional(),
   image_status: z.enum(["pending", "ok", "failed", "unavailable"]),
   tickets_required: z.boolean(),
+  // Older rows (pre-migration) may omit the column; default to false.
+  editors_pick: z.boolean().optional().default(false),
   external_link: z.string().nullable(),
   locations: embeddedNameSchema,
   event_organizers: z
@@ -83,6 +86,7 @@ export const toEventListItem = (raw: RawEvent): EventListItem => ({
   imageUrl: raw.image_url,
   imageStatus: raw.image_status,
   ticketsRequired: raw.tickets_required,
+  editorsPick: raw.editors_pick,
   externalLink: raw.external_link,
   organizerName: organizerName(raw.event_organizers),
   locationName: firstName(raw.locations),

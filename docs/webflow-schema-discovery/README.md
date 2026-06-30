@@ -39,6 +39,8 @@
 | `location` | Reference → `locations` | – | Webflow item id, e.g. `6843c04de2917a964a3448f1` |
 | `external-link` | Link | ✅ | Often Instagram |
 | `show-tickets-required-tag` | Switch | – | |
+| `additional-organizers` | MultiReference → `organizers` | – | "Event Organizer(s)". **Re-pull 2026-06-30:** present in schema but empty for every live item (0 links across 1029 events) → cards fall back to the venue name |
+| `is-editor-s-pick` | Switch | – | "Is Editor's Pick". **Added by Webflow team; discovered 2026-06-30.** 0 events marked `true` at discovery. Mapped to `events.editors_pick` (default false); propagates via webhook/refresh-tick |
 
 ### `shows-ongoing-events` — id `6865fb691dda49a9c7043754`
 | Field slug | Type | Required | Notes |

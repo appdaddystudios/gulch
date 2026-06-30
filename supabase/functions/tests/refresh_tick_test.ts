@@ -364,6 +364,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
       location_id: null,
       external_link: "https://www.instagram.com/p/new/",
       tickets_required: false,
+      editors_pick: false,
       webflow_last_updated: "2026-06-03T00:00:00.000Z"
     },
     {
@@ -376,6 +377,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
       location_id: null,
       external_link: "https://www.instagram.com/p/same/",
       tickets_required: false,
+      editors_pick: false,
       webflow_last_updated: "2026-06-03T00:00:00.000Z"
     }
   ]);

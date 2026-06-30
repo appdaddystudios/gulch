@@ -41,6 +41,25 @@ Deno.test("mappers normalize nullable optional strings like shared package", () 
   assertEquals(location.neighborhood, null);
 });
 
+Deno.test("mapEvent reads the editor's pick switch and defaults it to false", () => {
+  const base = {
+    ...envelope,
+    id: "event-pick",
+    lastUpdated: "2026-06-04T12:00:00.000Z",
+    fieldData: {
+      name: "Pick Event",
+      slug: "pick-event",
+      "start-date-time": "2026-07-03T22:00:00.000Z"
+    }
+  };
+
+  assertEquals(mapEvent(base).editors_pick, false);
+  assertEquals(
+    mapEvent({ ...base, fieldData: { ...base.fieldData, "is-editor-s-pick": true } }).editors_pick,
+    true
+  );
+});
+
 Deno.test("organizer mapper and event organizer derivation match node shared behavior", () => {
   const organizerRaw = {
     ...envelope,

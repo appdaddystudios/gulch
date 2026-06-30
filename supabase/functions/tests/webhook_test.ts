@@ -181,6 +181,7 @@ Deno.test("webhook replaces event organizers for created events and skips dangli
         location_id: null,
         external_link: null,
         tickets_required: false,
+        editors_pick: false,
         webflow_last_updated: "2026-06-02T12:00:00.000Z"
       }]
     },

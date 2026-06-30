@@ -107,7 +107,8 @@ describe("Webflow to Supabase mappers", () => {
         "custom-time-description": "6-9 PM",
         location: "location-tim-barrett",
         "external-link": "https://www.instagram.com/p/example/",
-        "show-tickets-required-tag": true
+        "show-tickets-required-tag": true,
+        "is-editor-s-pick": true
       }
     };
 
@@ -123,6 +124,7 @@ describe("Webflow to Supabase mappers", () => {
       location_id: "location-tim-barrett",
       external_link: "https://www.instagram.com/p/example/",
       tickets_required: true,
+      editors_pick: true,
       webflow_last_updated: "2026-06-04T12:00:00.000Z"
     });
   });
@@ -257,7 +259,8 @@ describe("Webflow to Supabase mappers", () => {
       custom_time_description: null,
       location_id: null,
       external_link: null,
-      tickets_required: false
+      tickets_required: false,
+      editors_pick: false
     });
   });
 
