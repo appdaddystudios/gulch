@@ -51,6 +51,7 @@ export const formatEventDateTime = (
 
 type FormatCompactOptions = {
   readonly endAt?: string | null;
+  readonly customTimeDescription?: string | null;
   readonly timeZone?: string;
 };
 
@@ -64,7 +65,11 @@ const compactTime = (iso: string, timeZone: string): string =>
 // Compact label for Event Card time pills, e.g. "Sat Jun 5 · 5pm – 7pm".
 export const formatEventTimeCompact = (
   startAt: string,
-  { endAt, timeZone = DEFAULT_TIME_ZONE }: FormatCompactOptions = {},
+  {
+    endAt,
+    customTimeDescription,
+    timeZone = DEFAULT_TIME_ZONE,
+  }: FormatCompactOptions = {},
 ): string => {
   const start = new Date(startAt);
   if (Number.isNaN(start.getTime())) {
@@ -82,7 +87,10 @@ export const formatEventTimeCompact = (
     timeZone,
   }).format(start);
 
-  const timePart = `${compactTime(startAt, timeZone)}${endAt ? ` – ${compactTime(endAt, timeZone)}` : ""}`;
+  const custom = customTimeDescription?.trim();
+  const timePart = custom
+    ? custom
+    : `${compactTime(startAt, timeZone)}${endAt ? ` – ${compactTime(endAt, timeZone)}` : ""}`;
   return `${weekday} ${monthDay} · ${timePart}`;
 };
 

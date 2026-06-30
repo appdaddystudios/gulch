@@ -29,6 +29,7 @@ export function EventCard({
   const hasImage = event.imageStatus === "ok" && Boolean(event.imageUrl);
   const timeLabel = formatEventTimeCompact(event.startAt, {
     endAt: event.endAt,
+    customTimeDescription: event.customTimeDescription,
   });
 
   return (

@@ -56,7 +56,9 @@ export default function CalendarScreen() {
   const events = state.status === "ready" ? state.data : [];
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return query ? events.filter((event) => matchesQuery(event, query)) : events;
+    return query
+      ? events.filter((event) => matchesQuery(event, query))
+      : events;
   }, [events, search]);
 
   const sections = useMemo(() => groupEventsByWeek(filtered), [filtered]);
@@ -93,16 +95,28 @@ export default function CalendarScreen() {
       {state.status !== "ready" ? (
         <StatusView state={state} />
       ) : mode === "list" ? (
-        <ListView sections={sections} hasSearch={search.trim().length > 0} renderCard={renderCard} />
+        <ListView
+          sections={sections}
+          hasSearch={search.trim().length > 0}
+          renderCard={renderCard}
+        />
       ) : (
         <CalendarView
           cursor={cursor}
           selectedKey={selectedKey}
           eventDayKeys={eventDayKeys}
           dayEvents={dayEvents}
-          onPrev={() => setCursor((c) => addMonths(c, -1))}
-          onNext={() => setCursor((c) => addMonths(c, 1))}
-          onSelectDay={(key) => setSelectedKey((prev) => (prev === key ? null : key))}
+          onPrev={() => {
+            setCursor((c) => addMonths(c, -1));
+            setSelectedKey(null);
+          }}
+          onNext={() => {
+            setCursor((c) => addMonths(c, 1));
+            setSelectedKey(null);
+          }}
+          onSelectDay={(key) =>
+            setSelectedKey((prev) => (prev === key ? null : key))
+          }
           renderCard={renderCard}
         />
       )}
@@ -129,7 +143,12 @@ function Toggle({
             onPress={() => onChange(value)}
             style={[styles.toggleButton, active ? styles.toggleActive : null]}
           >
-            <Text style={[styles.toggleLabel, active ? styles.toggleLabelActive : null]}>
+            <Text
+              style={[
+                styles.toggleLabel,
+                active ? styles.toggleLabelActive : null,
+              ]}
+            >
               {value === "list" ? "List" : "Calendar"}
             </Text>
           </Pressable>
@@ -139,7 +158,11 @@ function Toggle({
   );
 }
 
-function StatusView({ state }: { readonly state: QueryState<readonly EventListItem[]> }) {
+function StatusView({
+  state,
+}: {
+  readonly state: QueryState<readonly EventListItem[]>;
+}) {
   if (state.status === "missing-client") {
     return (
       <Centered>
@@ -179,7 +202,9 @@ function ListView({
         <EmptyState
           title={hasSearch ? "No matches" : "No upcoming events"}
           subtitle={
-            hasSearch ? "Try a different search term." : "Check back soon for new events."
+            hasSearch
+              ? "Try a different search term."
+              : "Check back soon for new events."
           }
         />
       </Centered>

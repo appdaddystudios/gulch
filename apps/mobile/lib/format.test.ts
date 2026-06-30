@@ -64,6 +64,16 @@ describe("formatEventTimeCompact", () => {
     ).toBe("Thu Jun 5 · 5:30pm");
   });
 
+  it("prefers a custom time description over the formatted range", () => {
+    expect(
+      formatEventTimeCompact("2025-06-05T17:00:00Z", {
+        endAt: "2025-06-05T19:00:00Z",
+        customTimeDescription: "Doors at 6, show at 7",
+        timeZone: "UTC",
+      }),
+    ).toBe("Thu Jun 5 · Doors at 6, show at 7");
+  });
+
   it("returns an empty string for an invalid date", () => {
     expect(formatEventTimeCompact("nope")).toBe("");
   });
