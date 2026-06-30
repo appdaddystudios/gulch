@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EVENT_SELECT,
   getEventDetail,
   groupEventsByWeek,
   listEventsByIds,
@@ -63,11 +64,28 @@ describe("listUpcomingEvents", () => {
         imageUrl: "https://cdn.example.com/evt-1.jpg",
         imageStatus: "ok",
         ticketsRequired: true,
+        editorsPick: false,
         externalLink: "https://instagram.com/p/abc",
         organizerName: "GULCH Magazine",
         locationName: "El Sótano",
       },
     ]);
+  });
+
+  it("defaults editorsPick to false and reads it when set", async () => {
+    const def = await listUpcomingEvents(
+      makeClient({ data: [baseRow], error: null }),
+    );
+    expect(def[0]?.editorsPick).toBe(false);
+
+    const picked = await listUpcomingEvents(
+      makeClient({ data: [{ ...baseRow, editors_pick: true }], error: null }),
+    );
+    expect(picked[0]?.editorsPick).toBe(true);
+  });
+
+  it("requests the editors_pick column", () => {
+    expect(EVENT_SELECT).toContain("editors_pick");
   });
 
   it("normalizes array-form relations and missing names", async () => {
@@ -187,6 +205,7 @@ describe("groupEventsByWeek", () => {
     imageUrl: null,
     imageStatus: "ok",
     ticketsRequired: false,
+    editorsPick: false,
     externalLink: null,
     organizerName: null,
     locationName: null,

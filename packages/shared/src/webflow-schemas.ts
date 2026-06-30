@@ -39,6 +39,7 @@ export const eventFieldDataSchema = z
     location: optionalString,
     "external-link": optionalString,
     "show-tickets-required-tag": z.boolean().nullable().optional(),
+    "is-editor-s-pick": z.boolean().nullable().optional(),
     "additional-organizers": z
       .array(z.union([z.string(), z.object({ id: z.string() }).passthrough()]))
       .nullish()

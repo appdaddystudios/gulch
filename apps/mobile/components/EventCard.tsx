@@ -21,7 +21,7 @@ type EventCardProps = {
 export function EventCard({
   event,
   onPress,
-  editorsPick = false,
+  editorsPick,
   sponsored = false,
   saved = false,
   onToggleSave,
@@ -31,6 +31,11 @@ export function EventCard({
     endAt: event.endAt,
     customTimeDescription: event.customTimeDescription,
   });
+  // Editor's Pick is data-driven; an explicit prop still wins when passed.
+  const isEditorsPick = editorsPick ?? event.editorsPick;
+  // The card's second line is the organizer when present, else the venue —
+  // most events carry no explicit organizer, so the location reads instead.
+  const metaLabel = event.organizerName ?? event.locationName;
 
   return (
     <Pressable
@@ -69,14 +74,14 @@ export function EventCard({
           <Text style={styles.name} numberOfLines={2}>
             {event.name}
           </Text>
-          {event.organizerName ? (
+          {metaLabel ? (
             <Text style={styles.meta} numberOfLines={1}>
-              {event.organizerName}
+              {metaLabel}
             </Text>
           ) : null}
         </View>
 
-        {editorsPick ? (
+        {isEditorsPick ? (
           <Badge label="Editor's Pick" variant="editorsPick" />
         ) : event.ticketsRequired ? (
           <View style={styles.tixRow}>
@@ -97,7 +102,11 @@ export function EventCard({
         onPress={onToggleSave}
         style={styles.bookmark}
       >
-        <HeartIcon size={24} color={saved ? color.gulchGreen : color.white} />
+        <HeartIcon
+          size={24}
+          color={saved ? color.gulchGreen : color.white}
+          filled={saved}
+        />
       </Pressable>
     </Pressable>
   );

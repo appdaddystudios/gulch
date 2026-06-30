@@ -11,10 +11,12 @@ import {
   View,
 } from "react-native";
 
+import { Button } from "../../components/Button";
 import { DatePicker } from "../../components/DatePicker";
 import { EmptyState } from "../../components/EmptyState";
 import { EventCard } from "../../components/EventCard";
 import { Header } from "../../components/Header";
+import { FileQuestionIcon } from "../../components/icons";
 import { SearchBar } from "../../components/SearchBar";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
@@ -98,6 +100,7 @@ export default function CalendarScreen() {
         <ListView
           sections={sections}
           hasSearch={search.trim().length > 0}
+          onClear={() => setSearch("")}
           renderCard={renderCard}
         />
       ) : (
@@ -190,22 +193,28 @@ function StatusView({
 function ListView({
   sections,
   hasSearch,
+  onClear,
   renderCard,
 }: {
   readonly sections: readonly EventWeekSection[];
   readonly hasSearch: boolean;
+  readonly onClear: () => void;
   readonly renderCard: (item: EventListItem) => ReactNode;
 }) {
   if (sections.length === 0) {
-    return (
+    return hasSearch ? (
+      <EmptyState
+        align="top"
+        icon={<FileQuestionIcon size={32} color={color.gulchGreen} />}
+        title="No results"
+        subtitle="Please try your search again using different terms."
+        action={<Button label="Clear Search" tone="light" onPress={onClear} />}
+      />
+    ) : (
       <Centered>
         <EmptyState
-          title={hasSearch ? "No matches" : "No upcoming events"}
-          subtitle={
-            hasSearch
-              ? "Try a different search term."
-              : "Check back soon for new events."
-          }
+          title="No upcoming events"
+          subtitle="Check back soon for new events."
         />
       </Centered>
     );
@@ -290,7 +299,8 @@ function Separator() {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: color.darkChocolate,
+    // Oreo (darker) so the darkChocolate time pill + heart button read on cards.
+    backgroundColor: color.oreo,
     flex: 1,
   },
   controls: {
@@ -335,7 +345,7 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     alignItems: "center",
-    backgroundColor: color.darkChocolate,
+    backgroundColor: color.oreo,
     flexDirection: "row",
     gap: space.md,
     paddingBottom: space.md,

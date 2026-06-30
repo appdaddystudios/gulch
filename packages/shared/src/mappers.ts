@@ -47,6 +47,7 @@ export function mapEvent(raw: unknown): EventInsert {
     location_id: fields.location ?? null,
     external_link: fields["external-link"] ?? null,
     tickets_required: fields["show-tickets-required-tag"] ?? false,
+    editors_pick: fields["is-editor-s-pick"] ?? false,
     webflow_last_updated: item.lastUpdated
   };
 }
