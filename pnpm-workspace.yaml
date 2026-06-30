@@ -2,4 +2,9 @@ packages:
   - "apps/*"
   - "packages/*"
 allowBuilds:
+  "@sentry/cli": true
   esbuild: true
+  sharp: true
+  unrs-resolver: true
+overrides:
+  enhanced-resolve: 5.21.6
