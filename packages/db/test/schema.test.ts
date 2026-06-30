@@ -55,7 +55,7 @@ describe("v1 mirror schema", () => {
     expect(columns.get("events.start_at")).toMatchObject({ data_type: "timestamp with time zone", is_nullable: "NO" });
     expect(columns.get("events.end_at")).toMatchObject({ data_type: "timestamp with time zone", is_nullable: "YES" });
     expect(columns.get("events.location_id")).toMatchObject({ data_type: "text", is_nullable: "YES" });
-    expect(columns.get("events.external_link")).toMatchObject({ data_type: "text", is_nullable: "NO" });
+    expect(columns.get("events.external_link")).toMatchObject({ data_type: "text", is_nullable: "YES" });
     expect(columns.get("events.tickets_required")).toMatchObject({ data_type: "boolean", is_nullable: "NO" });
 
     expect(columns.get("shows.start_date")).toMatchObject({ data_type: "timestamp with time zone", is_nullable: "YES" });
@@ -102,6 +102,26 @@ describe("v1 mirror schema", () => {
         ["bad-geocode", "Bad Geocode", "bad-geocode", "unknown"]
       )
     ).rejects.toThrow(/geocode_status|check constraint/i);
+  });
+
+  it("allows service_role to insert an event without external_link", async () => {
+    await client.query("set role service_role");
+
+    try {
+      await client.query(
+        "insert into public.events (webflow_item_id, name, slug, start_at) values ($1, $2, $3, $4)",
+        ["event-without-link", "Event Without Link", "event-without-link", "2026-07-03T22:00:00.000Z"]
+      );
+
+      const selected = await client.query<{ external_link: string | null }>(
+        "select external_link from public.events where webflow_item_id = $1",
+        ["event-without-link"]
+      );
+
+      expect(selected.rows[0]?.external_link).toBeNull();
+    } finally {
+      await client.query("reset role");
+    }
   });
 
   it("bumps updated_at before update", async () => {

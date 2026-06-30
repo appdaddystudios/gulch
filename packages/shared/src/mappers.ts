@@ -40,7 +40,7 @@ export function mapEvent(raw: unknown): EventInsert {
     end_at: fields["end-date-time"] ?? null,
     custom_time_description: fields["custom-time-description"] ?? null,
     location_id: fields.location ?? null,
-    external_link: fields["external-link"],
+    external_link: fields["external-link"] ?? null,
     tickets_required: fields["show-tickets-required-tag"] ?? false,
     webflow_last_updated: item.lastUpdated
   };

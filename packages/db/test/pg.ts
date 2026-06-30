@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -12,14 +12,13 @@ const { Client } = pg;
 const execFileAsync = promisify(execFile);
 const postgresBin = "/opt/homebrew/opt/postgresql@18/bin";
 const postgresBinHasInitdb = existsSync(path.join(postgresBin, "initdb"));
-const migrationPath = path.join(
+const migrationsDir = path.join(
   import.meta.dirname,
   "..",
   "..",
   "..",
   "supabase",
-  "migrations",
-  "20260629000001_init_v1_mirror.sql"
+  "migrations"
 );
 
 export type TestPostgres = {
@@ -118,13 +117,16 @@ const resetPublicSchema = async (connectionString: string): Promise<void> => {
   }
 };
 
-const applyMigration = async (connectionString: string): Promise<void> => {
+const applyMigrations = async (connectionString: string): Promise<void> => {
   const client = new Client({ connectionString });
-  const migrationSql = await readFile(migrationPath, "utf8");
+  const migrationFiles = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
   await client.connect();
 
   try {
-    await client.query(migrationSql);
+    for (const migrationFile of migrationFiles) {
+      const migrationSql = await readFile(path.join(migrationsDir, migrationFile), "utf8");
+      await client.query(migrationSql);
+    }
   } finally {
     await client.end();
   }
@@ -135,7 +137,7 @@ export const setupTestPostgres = async (): Promise<TestPostgres> => {
     const connectionString = process.env.DATABASE_URL;
     await createSupabaseCompatibility(connectionString);
     await resetPublicSchema(connectionString);
-    await applyMigration(connectionString);
+    await applyMigrations(connectionString);
 
     return {
       connectionString,
@@ -162,7 +164,7 @@ export const setupTestPostgres = async (): Promise<TestPostgres> => {
 
     await execFileAsync("createdb", ["-h", "localhost", "-p", String(port), "gulch_test"], { env: withPostgresPath });
     await createSupabaseCompatibility(connectionString);
-    await applyMigration(connectionString);
+    await applyMigrations(connectionString);
 
     return {
       connectionString,

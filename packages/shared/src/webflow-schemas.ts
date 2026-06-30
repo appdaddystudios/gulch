@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const requiredString = z.string().min(1, "Required string cannot be empty");
-const optionalString = z.string().nullable().optional();
+const optionalString = z.string().nullish().transform((value) => (value == null || value.trim() === "" ? null : value));
 
 export const webflowItemEnvelopeSchema = z
   .object({
@@ -35,7 +35,7 @@ export const eventFieldDataSchema = z
     "end-date-time": optionalString,
     "custom-time-description": optionalString,
     location: optionalString,
-    "external-link": requiredString,
+    "external-link": optionalString,
     "show-tickets-required-tag": z.boolean().nullable().optional()
   });
 

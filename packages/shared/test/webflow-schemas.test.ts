@@ -112,16 +112,16 @@ describe("Webflow item schemas", () => {
       })
     ).toThrow(/fieldData\.start-date-time: Required/);
 
-    expect(() =>
-      parseWebflowItem(webflowEventItemSchema, {
-        ...envelope,
-        fieldData: {
-          name: "Missing Link",
-          slug: "missing-link",
-          "start-date-time": "2026-07-03T22:00:00.000Z"
-        }
-      })
-    ).toThrow(/fieldData\.external-link: Required/);
+    const missingLinkEvent = parseWebflowItem(webflowEventItemSchema, {
+      ...envelope,
+      fieldData: {
+        name: "Missing Link",
+        slug: "missing-link",
+        "start-date-time": "2026-07-03T22:00:00.000Z"
+      }
+    });
+
+    expect(missingLinkEvent.data.fieldData["external-link"]).toBeNull();
   });
 
   it("rejects empty required strings", () => {
@@ -136,6 +136,36 @@ describe("Webflow item schemas", () => {
         }
       })
     ).toThrow(/Required string cannot be empty/);
+  });
+
+  it("allows event external-link to be null and maps it to null", () => {
+    const parsed = parseWebflowItem(webflowEventItemSchema, {
+      ...envelope,
+      fieldData: {
+        name: "No Link Event",
+        slug: "no-link-event",
+        "start-date-time": "2026-07-03T22:00:00.000Z",
+        "external-link": null
+      }
+    });
+
+    expect(parsed.data.fieldData["external-link"]).toBeNull();
+    expect(mapEvent(parsed.data).external_link).toBeNull();
+  });
+
+  it("normalizes empty optional event external-link to null", () => {
+    const parsed = parseWebflowItem(webflowEventItemSchema, {
+      ...envelope,
+      fieldData: {
+        name: "Empty Link Event",
+        slug: "empty-link-event",
+        "start-date-time": "2026-07-03T22:00:00.000Z",
+        "external-link": ""
+      }
+    });
+
+    expect(parsed.data.fieldData["external-link"]).toBeNull();
+    expect(mapEvent(parsed.data).external_link).toBeNull();
   });
 
   it("accepts and strips unknown fieldData keys while preserving mapped fields", () => {

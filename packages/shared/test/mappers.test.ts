@@ -72,6 +72,21 @@ describe("Webflow to Supabase mappers", () => {
     });
   });
 
+  it("maps whitespace-only location optionals to null", () => {
+    const mapped = mapLocation({
+      ...envelope,
+      id: "location-empty-optional",
+      lastUpdated: "2026-06-03T12:00:00.000Z",
+      fieldData: {
+        name: "Location Empty Optional",
+        slug: "location-empty-optional",
+        "neighborhood-optional": "   "
+      }
+    });
+
+    expect(mapped.neighborhood).toBeNull();
+  });
+
   it("maps a full event", () => {
     const item = {
       ...envelope,
@@ -105,7 +120,7 @@ describe("Webflow to Supabase mappers", () => {
     });
   });
 
-  it("maps missing optional event location and flags to null/defaults", () => {
+  it("maps missing optional event location, link, and flags to null/defaults", () => {
     const mapped = mapEvent({
       ...envelope,
       id: "event-no-location",
@@ -113,8 +128,7 @@ describe("Webflow to Supabase mappers", () => {
       fieldData: {
         name: "No Location Event",
         slug: "no-location-event",
-        "start-date-time": "2026-07-05T22:00:00.000Z",
-        "external-link": "https://example.com/event"
+        "start-date-time": "2026-07-05T22:00:00.000Z"
       }
     });
 
@@ -122,6 +136,7 @@ describe("Webflow to Supabase mappers", () => {
       end_at: null,
       custom_time_description: null,
       location_id: null,
+      external_link: null,
       tickets_required: false
     });
   });

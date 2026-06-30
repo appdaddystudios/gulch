@@ -70,7 +70,7 @@ export type Database = {
           readonly end_at: string | null;
           readonly custom_time_description: string | null;
           readonly location_id: string | null;
-          readonly external_link: string;
+          readonly external_link: string | null;
           readonly tickets_required: boolean;
           readonly webflow_last_updated: string | null;
           readonly created_at: string;
@@ -84,7 +84,7 @@ export type Database = {
           readonly end_at?: string | null;
           readonly custom_time_description?: string | null;
           readonly location_id?: string | null;
-          readonly external_link: string;
+          readonly external_link?: string | null;
           readonly tickets_required?: boolean;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
@@ -98,7 +98,7 @@ export type Database = {
           readonly end_at?: string | null;
           readonly custom_time_description?: string | null;
           readonly location_id?: string | null;
-          readonly external_link?: string;
+          readonly external_link?: string | null;
           readonly tickets_required?: boolean;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
