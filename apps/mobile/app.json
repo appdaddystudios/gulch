@@ -5,10 +5,10 @@
     "scheme": "gulch",
     "version": "1.0.0",
     "orientation": "portrait",
-    "newArchEnabled": true,
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      "@sentry/react-native"
     ],
     "ios": {
       "supportsTablet": true,

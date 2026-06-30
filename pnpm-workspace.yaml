@@ -1,6 +1,9 @@
 packages:
   - "apps/*"
   - "packages/*"
+# React Native / Metro need a flat node_modules; pnpm's default isolated linker
+# breaks Metro in clean installs (e.g. EAS Build). Hoisted matches RN's expectations.
+nodeLinker: hoisted
 allowBuilds:
   '@sentry/cli': true
   esbuild: true
