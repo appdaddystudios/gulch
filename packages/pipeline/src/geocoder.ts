@@ -43,6 +43,9 @@ const mapboxResponseSchema = z
   })
   .passthrough();
 
+const streetNumberPattern = /\b\d{1,6}\s+\S/;
+const georgiaPattern = /\b(?:GA|Georgia)\b/i;
+
 export function createGeocoder(options: GeocoderOptions): Geocoder {
   const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
   const cache = options.cache ?? new Map<string, GeocodeResult>();
@@ -56,23 +59,13 @@ export function createGeocoder(options: GeocoderOptions): Geocoder {
         return cached;
       }
 
-      const response = await fetchImpl(buildGeocodeUrl(address, options.token));
-      if (!response.ok) {
-        throw new Error(`Mapbox geocode failed with status ${response.status}`);
+      let result: GeocodeResult = { latitude: null, longitude: null, status: "failed" };
+      for (const candidate of buildGeocodeCandidates(address)) {
+        result = await queryMapbox(fetchImpl, candidate, options.token, minRelevance);
+        if (result.status === "ok") {
+          break;
+        }
       }
-
-      const parsed = mapboxResponseSchema.safeParse(await response.json());
-      if (!parsed.success) {
-        const details = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-        throw new Error(`Invalid Mapbox geocode response: ${details}`);
-      }
-
-      const feature = parsed.data.features[0];
-      const [longitude, latitude] = feature?.center ?? [];
-      const result: GeocodeResult =
-        feature === undefined || longitude === undefined || latitude === undefined || feature.relevance < minRelevance
-          ? { latitude: null, longitude: null, status: "failed" }
-          : { latitude, longitude, status: "ok" };
       cache.set(key, result);
 
       return result;
@@ -80,8 +73,66 @@ export function createGeocoder(options: GeocoderOptions): Geocoder {
   };
 }
 
+export function extractStreetAddress(input: string): string | null {
+  return buildGeocodeCandidates(input)[1] ?? null;
+}
+
+export function buildGeocodeCandidates(input: string): string[] {
+  const original = input.trim();
+  if (original === "") return [];
+
+  const segments = input.split(",").map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+  return uniqueCandidates([
+    original,
+    ...segments.flatMap((segment, index) => {
+      if (!streetNumberPattern.test(segment)) return [];
+      const candidate = segments.slice(index).join(", ");
+      return georgiaPattern.test(candidate) ? [candidate] : [`${candidate}, GA`];
+    })
+  ]);
+}
+
 function normalizeAddress(address: string): string {
   return address.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function uniqueCandidates(candidates: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const candidate of candidates) {
+    const trimmed = candidate.trim();
+    const key = normalizeAddress(trimmed);
+    if (trimmed === "" || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(trimmed);
+  }
+
+  return unique;
+}
+
+async function queryMapbox(
+  fetchImpl: FetchLike,
+  address: string,
+  token: string,
+  minRelevance: number
+): Promise<GeocodeResult> {
+  const response = await fetchImpl(buildGeocodeUrl(address, token));
+  if (!response.ok) {
+    throw new Error(`Mapbox geocode failed with status ${response.status}`);
+  }
+
+  const parsed = mapboxResponseSchema.safeParse(await response.json());
+  if (!parsed.success) {
+    const details = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
+    throw new Error(`Invalid Mapbox geocode response: ${details}`);
+  }
+
+  const feature = parsed.data.features[0];
+  const [longitude, latitude] = feature?.center ?? [];
+  return feature === undefined || longitude === undefined || latitude === undefined || feature.relevance < minRelevance
+    ? { latitude: null, longitude: null, status: "failed" }
+    : { latitude, longitude, status: "ok" };
 }
 
 function buildGeocodeUrl(address: string, token: string): URL {

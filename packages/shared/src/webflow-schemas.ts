@@ -24,7 +24,9 @@ export const locationFieldDataSchema = z
     "google-maps-link-url": optionalString,
     "neighborhood-optional": optionalString,
     "parking-optional": optionalString,
-    "hide-from-locations-list": z.boolean().nullable().optional()
+    "hide-from-locations-list": z.boolean().nullable().optional(),
+    "is-organizer": z.boolean().nullable().optional(),
+    "managing-organizer": optionalString
   });
 
 export const eventFieldDataSchema = z
@@ -36,7 +38,22 @@ export const eventFieldDataSchema = z
     "custom-time-description": optionalString,
     location: optionalString,
     "external-link": optionalString,
-    "show-tickets-required-tag": z.boolean().nullable().optional()
+    "show-tickets-required-tag": z.boolean().nullable().optional(),
+    "additional-organizers": z
+      .array(z.union([z.string(), z.object({ id: z.string() }).passthrough()]))
+      .nullish()
+      .transform((a) => (a ?? []).map((x) => (typeof x === "string" ? x : x.id)))
+  });
+
+export const organizerFieldDataSchema = z
+  .object({
+    name: requiredString,
+    slug: requiredString,
+    "website-url": optionalString,
+    "instagram-url": optionalString,
+    "facebook-url": optionalString,
+    "is-featured": z.boolean().nullable().optional(),
+    "custom-color": optionalString
   });
 
 export const showFieldDataSchema = z
@@ -57,12 +74,17 @@ export const webflowEventItemSchema = webflowItemEnvelopeSchema.extend({
   fieldData: eventFieldDataSchema
 });
 
+export const webflowOrganizerItemSchema = webflowItemEnvelopeSchema.extend({
+  fieldData: organizerFieldDataSchema
+});
+
 export const webflowShowItemSchema = webflowItemEnvelopeSchema.extend({
   fieldData: showFieldDataSchema
 });
 
 export type WebflowLocationItem = z.infer<typeof webflowLocationItemSchema>;
 export type WebflowEventItem = z.infer<typeof webflowEventItemSchema>;
+export type WebflowOrganizerItem = z.infer<typeof webflowOrganizerItemSchema>;
 export type WebflowShowItem = z.infer<typeof webflowShowItemSchema>;
 
 export type ParsedWebflowItem<TSchema extends z.ZodTypeAny> = {

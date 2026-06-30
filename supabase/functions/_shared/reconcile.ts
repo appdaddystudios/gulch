@@ -1,6 +1,17 @@
-import { type ExistingRow } from "./db.ts";
+import { type ExistingRow, type ManagingOrganizerRefUpdate } from "./db.ts";
 import { type GeocodeResult } from "./geocode.ts";
-import { mapEvent, mapLocation, mapShow, type EventRow, type LocationRow, type ShowRow } from "./mappers.ts";
+import {
+  deriveEventOrganizers,
+  mapEvent,
+  mapLocation,
+  mapOrganizer,
+  mapShow,
+  type EventOrganizerRow,
+  type EventRow,
+  type LocationRow,
+  type OrganizerRow,
+  type ShowRow
+} from "./mappers.ts";
 import type { CollectionName, WebflowItem } from "./schemas.ts";
 
 export type ReconcileSummary = {
@@ -10,15 +21,23 @@ export type ReconcileSummary = {
   failed: number;
 };
 
-export type ReconcileResult<T extends LocationRow | EventRow | ShowRow> = {
+export type EventOrganizerReplacement = {
+  eventId: string;
+  rows: EventOrganizerRow[];
+  skipped: number;
+};
+
+export type ReconcileResult<T extends LocationRow | EventRow | OrganizerRow | ShowRow> = {
   rows: T[];
   summary: ReconcileSummary;
+  eventOrganizerReplacements?: EventOrganizerReplacement[];
 };
 
 export type ReconcileOptions = {
   geocoder: (address: string | null) => Promise<GeocodeResult>;
   existingByIdLastUpdated: ReadonlyMap<string, string | null>;
   existingLocationsById?: ReadonlyMap<string, ExistingRow>;
+  knownOrganizerIds?: ReadonlySet<string>;
   now?: () => string;
 };
 
@@ -35,7 +54,13 @@ async function reconcileLocations(rawItems: readonly WebflowItem[], options: Rec
   for (const item of rawItems) {
     if (!changed(item, options.existingByIdLastUpdated)) continue;
 
-    const row = mapLocation(item);
+    const mapped = mapLocation(item);
+    const row =
+      mapped.managing_organizer_id &&
+        options.knownOrganizerIds !== undefined &&
+        !options.knownOrganizerIds.has(mapped.managing_organizer_id)
+        ? { ...mapped, managing_organizer_id: null }
+        : mapped;
     const existing = options.existingLocationsById?.get(row.webflow_item_id);
     const addressChanged = !existing || existing.name_address !== row.name_address;
 
@@ -64,16 +89,59 @@ export async function reconcile(
   rawItems: readonly WebflowItem[],
   collection: CollectionName,
   options: ReconcileOptions
-): Promise<ReconcileResult<LocationRow | EventRow | ShowRow>> {
+): Promise<ReconcileResult<LocationRow | EventRow | OrganizerRow | ShowRow>> {
   if (collection === "locations") return reconcileLocations(rawItems, options);
 
-  const rows = rawItems
-    .filter((item) => changed(item, options.existingByIdLastUpdated))
-    .map((item) => (collection === "events" ? mapEvent(item) : mapShow(item)));
+  const changedItems = rawItems.filter((item) => changed(item, options.existingByIdLastUpdated));
+  const rows = changedItems.map((item) => {
+    if (collection === "organizers") return mapOrganizer(item);
+    if (collection === "events") return mapEvent(item);
+    return mapShow(item);
+  });
+  const eventOrganizerReplacements = collection === "events"
+    ? changedItems.map((item) => {
+      const derivedRows = deriveEventOrganizers(item);
+      const rows = derivedRows.filter((row) =>
+        row.event_id === item.id && (options.knownOrganizerIds?.has(row.organizer_id) ?? false)
+      );
+      return { eventId: item.id, rows, skipped: derivedRows.length - rows.length };
+    })
+    : undefined;
 
   return {
     rows,
-    summary: { scanned: rawItems.length, upserted: rows.length, geocoded: 0, failed: 0 }
+    summary: { scanned: rawItems.length, upserted: rows.length, geocoded: 0, failed: 0 },
+    eventOrganizerReplacements
   };
 }
 
+export function deriveGuardedEventOrganizers(
+  rawEvents: readonly WebflowItem[],
+  knownOrganizerIds: ReadonlySet<string>,
+  knownEventIds: ReadonlySet<string>
+): { rows: EventOrganizerRow[]; derived: number; skipped: number } {
+  const derivedRows = rawEvents.flatMap((item) => deriveEventOrganizers(item));
+  const rows = derivedRows.filter((row) => knownOrganizerIds.has(row.organizer_id) && knownEventIds.has(row.event_id));
+
+  return { rows, derived: derivedRows.length, skipped: derivedRows.length - rows.length };
+}
+
+export function reconcileManagingOrganizerRefs(
+  rawLocations: readonly WebflowItem[],
+  existingLocationsById: ReadonlyMap<string, ExistingRow>,
+  knownOrganizerIds: ReadonlySet<string>
+): ManagingOrganizerRefUpdate[] {
+  return rawLocations.flatMap((item) => {
+    const row = mapLocation(item);
+    const computed = row.managing_organizer_id && knownOrganizerIds.has(row.managing_organizer_id)
+      ? row.managing_organizer_id
+      : null;
+    const existing = existingLocationsById.get(row.webflow_item_id);
+
+    if (!existing || (existing.managing_organizer_id ?? null) === computed) {
+      return [];
+    }
+
+    return [{ locationId: row.webflow_item_id, managingOrganizerId: computed }];
+  });
+}

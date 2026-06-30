@@ -9,6 +9,15 @@ const expectDenied = async (query: Promise<unknown>): Promise<void> => {
   await expect(query).rejects.toThrow(/permission denied|row-level security/i);
 };
 
+const expectDeniedCode = async (query: Promise<unknown>): Promise<void> => {
+  try {
+    await query;
+    throw new Error("Expected query to be denied");
+  } catch (error) {
+    expect((error as { readonly code?: string }).code).toBe("42501");
+  }
+};
+
 describe("v1 mirror RLS", () => {
   let postgres: TestPostgres;
   let client: pg.Client;
@@ -23,6 +32,18 @@ describe("v1 mirror RLS", () => {
       "insert into public.locations (webflow_item_id, name, slug) values ($1, $2, $3)",
       ["visible-location", "Visible Location", "visible-location"]
     );
+    await client.query(
+      "insert into public.organizers (webflow_item_id, name, slug) values ($1, $2, $3)",
+      ["visible-organizer", "Visible Organizer", "visible-organizer"]
+    );
+    await client.query(
+      "insert into public.events (webflow_item_id, name, slug, start_at) values ($1, $2, $3, $4)",
+      ["visible-event", "Visible Event", "visible-event", "2026-07-01T00:00:00.000Z"]
+    );
+    await client.query("insert into public.event_organizers (event_id, organizer_id) values ($1, $2)", [
+      "visible-event",
+      "visible-organizer"
+    ]);
     await client.query("reset role");
   });
 
@@ -44,11 +65,36 @@ describe("v1 mirror RLS", () => {
     ]);
     expect(selected.rowCount).toBe(1);
 
-    await expectDenied(
+    const selectedOrganizer = await client.query(
+      "select webflow_item_id from public.organizers where webflow_item_id = $1",
+      ["visible-organizer"]
+    );
+    expect(selectedOrganizer.rowCount).toBe(1);
+
+    const selectedEventOrganizer = await client.query(
+      "select event_id, organizer_id from public.event_organizers where event_id = $1",
+      ["visible-event"]
+    );
+    expect(selectedEventOrganizer.rowCount).toBe(1);
+
+    await expectDeniedCode(
       client.query("insert into public.locations (webflow_item_id, name, slug) values ($1, $2, $3)", [
         "anon-insert",
         "Anon Insert",
         "anon-insert"
+      ])
+    );
+    await expectDeniedCode(
+      client.query("insert into public.organizers (webflow_item_id, name, slug) values ($1, $2, $3)", [
+        "anon-organizer-insert",
+        "Anon Organizer Insert",
+        "anon-organizer-insert"
+      ])
+    );
+    await expectDeniedCode(
+      client.query("insert into public.event_organizers (event_id, organizer_id) values ($1, $2)", [
+        "visible-event",
+        "visible-organizer"
       ])
     );
     await expectDenied(
@@ -96,6 +142,10 @@ describe("v1 mirror RLS", () => {
       ["service-location", "Service Location", "service-location"]
     );
     await client.query(
+      "insert into public.organizers (webflow_item_id, name, slug) values ($1, $2, $3)",
+      ["service-organizer", "Service Organizer", "service-organizer"]
+    );
+    await client.query(
       "insert into public.events (webflow_item_id, name, slug, start_at, location_id, external_link) values ($1, $2, $3, $4, $5, $6)",
       [
         "service-event",
@@ -106,6 +156,10 @@ describe("v1 mirror RLS", () => {
         "https://example.com/event"
       ]
     );
+    await client.query("insert into public.event_organizers (event_id, organizer_id) values ($1, $2)", [
+      "service-event",
+      "service-organizer"
+    ]);
     await client.query(
       "insert into public.shows (webflow_item_id, name, slug, location_id, external_link) values ($1, $2, $3, $4, $5)",
       ["service-show", "Service Show", "service-show", "service-location", "https://example.com/show"]
@@ -122,8 +176,15 @@ describe("v1 mirror RLS", () => {
     );
     expect(updated.rows[0]?.neighborhood).toBe("Downtown");
 
+    const linked = await client.query<{ organizer_id: string }>(
+      "select organizer_id from public.event_organizers where event_id = $1",
+      ["service-event"]
+    );
+    expect(linked.rows[0]?.organizer_id).toBe("service-organizer");
+
     await client.query("delete from public.events where webflow_item_id = $1", ["service-event"]);
     await client.query("delete from public.shows where webflow_item_id = $1", ["service-show"]);
+    await client.query("delete from public.organizers where webflow_item_id = $1", ["service-organizer"]);
     await client.query("delete from public.locations where webflow_item_id = $1", ["service-location"]);
 
     await client.query("reset role");
