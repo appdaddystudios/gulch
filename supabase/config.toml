@@ -4,6 +4,12 @@
 # working directory name when running `supabase init`.
 project_id = "gulch"
 
+[functions.webflow-webhook]
+verify_jwt = false
+
+[functions.refresh-tick]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.
