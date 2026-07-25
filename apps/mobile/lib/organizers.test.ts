@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { listFeaturedOrganizers } from "./organizers";
+import { FEATURED_SELECT, listFeaturedOrganizers } from "./organizers";
 
 type QueryResult = { data: unknown; error: unknown };
 
@@ -17,23 +17,40 @@ const makeClient = (result: QueryResult) =>
   ({ from: () => makeBuilder(result) }) as never;
 
 describe("listFeaturedOrganizers", () => {
-  it("maps featured organizer rows", async () => {
+  it("selects from the curation table with the embedded organizer", () => {
+    expect(FEATURED_SELECT).toContain("position");
+    expect(FEATURED_SELECT).toContain("organizers(");
+  });
+
+  it("maps curated rows with object- and array-form embeds", async () => {
     const rows = [
       {
-        webflow_item_id: "org-1",
-        name: "GULCH Magazine",
-        custom_color: "#D9FF71",
-        instagram_url: "https://instagram.com/gulch",
+        position: 0,
+        organizers: {
+          webflow_item_id: "org-1",
+          name: "GULCH Magazine",
+          custom_color: "#D9FF71",
+          instagram_url: "https://instagram.com/gulch",
+        },
       },
       {
-        webflow_item_id: "org-2",
-        name: "Echo Contemporary",
-        custom_color: null,
-        instagram_url: null,
+        position: 1,
+        organizers: [
+          {
+            webflow_item_id: "org-2",
+            name: "Echo Contemporary",
+            custom_color: null,
+            instagram_url: null,
+          },
+        ],
       },
+      // FK row whose organizer embed is missing — skipped, not crashed.
+      { position: 2, organizers: null },
     ];
 
-    await expect(listFeaturedOrganizers(makeClient({ data: rows, error: null }))).resolves.toEqual([
+    await expect(
+      listFeaturedOrganizers(makeClient({ data: rows, error: null })),
+    ).resolves.toEqual([
       {
         id: "org-1",
         name: "GULCH Magazine",
@@ -51,7 +68,9 @@ describe("listFeaturedOrganizers", () => {
 
   it("returns an empty list when data is null", async () => {
     await expect(
-      listFeaturedOrganizers(makeClient({ data: null, error: null }), { limit: 3 }),
+      listFeaturedOrganizers(makeClient({ data: null, error: null }), {
+        limit: 3,
+      }),
     ).resolves.toEqual([]);
   });
 

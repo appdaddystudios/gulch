@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import type { BannerAd } from "../lib/homeConfig";
 import { color, hardShadow, radius, space, type as typePreset } from "../theme";
 
 // Compact card used in the Home horizontal carousels (Your Events, Featured
@@ -98,7 +99,63 @@ export function PromoBanner({
   );
 }
 
+// Admin-configured homepage ad. Text mode reuses PromoBanner; image mode shows
+// the uploaded art letterboxed on the brand background (never cropped).
+type BannerAdSlotProps = {
+  readonly ad: BannerAd;
+  readonly onPress?: () => void;
+};
+
+export function BannerAdSlot({ ad, onPress }: BannerAdSlotProps) {
+  if (ad.kind === "text") {
+    return (
+      <PromoBanner
+        title={ad.title}
+        body={ad.body ?? undefined}
+        tone="dark"
+        onPress={onPress}
+      />
+    );
+  }
+
+  return (
+    <Pressable
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel="Banner ad"
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.adImageWrap,
+        pressed && onPress ? styles.pressed : null,
+      ]}
+    >
+      <Image
+        accessibilityIgnoresInvertColors
+        source={{ uri: ad.imageUrl }}
+        resizeMode="contain"
+        style={styles.adImage}
+      />
+    </Pressable>
+  );
+}
+
+const AD_ASPECT_RATIO = 2;
+
 const styles = StyleSheet.create({
+  adImageWrap: {
+    ...hardShadow,
+    aspectRatio: AD_ASPECT_RATIO,
+    backgroundColor: color.oreo,
+    borderColor: color.oreo,
+    borderRadius: radius.card,
+    borderWidth: 2,
+    overflow: "hidden",
+    width: "100%",
+  },
+  adImage: {
+    height: "100%",
+    width: "100%",
+  },
   compact: {
     ...hardShadow,
     backgroundColor: color.brown300,

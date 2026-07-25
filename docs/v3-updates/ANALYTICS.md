@@ -32,6 +32,7 @@
 | `calendar_view_toggled` | `mode` (`list` \| `calendar`) | Calendar toggle, only on actual change |
 | `survey_banner_tapped` | — | Home research banner button (also emits `link_opened`) |
 | `video_played` | `event_id` | Event details "Watch video" tap (Instagram embed player) |
+| `banner_ad_tapped` | `kind` (`image` \| `text`) | Home banner-ad slot tap (link domain arrives via `link_opened`) |
 
 ## Conventions
 
