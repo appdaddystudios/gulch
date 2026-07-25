@@ -9,13 +9,18 @@ import {
   View,
 } from "react-native";
 
-import { BannerCard, PromoBanner } from "../../components/Banner";
+import { BannerAdSlot, BannerCard, PromoBanner } from "../../components/Banner";
 import { Button } from "../../components/Button";
 import { Header } from "../../components/Header";
 import { SearchBar } from "../../components/SearchBar";
 import { SectionTitle } from "../../components/SectionTitle";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { listUpcomingEvents, type EventListItem } from "../../lib/events";
+import {
+  getHomeConfig,
+  HOME_CONFIG_DEFAULTS,
+  type HomeConfig,
+} from "../../lib/homeConfig";
 import { openLink } from "../../lib/openLink";
 import { captureEvent } from "../../lib/telemetry";
 import {
@@ -27,19 +32,19 @@ import { color, space, type as typePreset } from "../../theme";
 type HomeData = {
   readonly events: readonly EventListItem[];
   readonly organizers: readonly FeaturedOrganizer[];
+  readonly config: HomeConfig;
 };
 
 const loadHome = async (
   client: Parameters<typeof listUpcomingEvents>[0],
 ): Promise<HomeData> => {
-  const [events, organizers] = await Promise.all([
+  const [events, organizers, config] = await Promise.all([
     listUpcomingEvents(client, { limit: 18 }),
     listFeaturedOrganizers(client, { limit: 9 }),
+    getHomeConfig(client),
   ]);
-  return { events, organizers };
+  return { events, organizers, config };
 };
-
-const RESEARCH_URL = "https://www.gulchmagazine.com/research";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -48,11 +53,24 @@ export default function HomeScreen() {
   const { state } = useQuery(client, loader);
 
   const data: HomeData =
-    state.status === "ready" ? state.data : { events: [], organizers: [] };
+    state.status === "ready"
+      ? state.data
+      : { events: [], organizers: [], config: HOME_CONFIG_DEFAULTS };
 
   const openSurvey = () => {
     captureEvent("survey_banner_tapped");
-    void openLink(RESEARCH_URL, "research_banner");
+    void openLink(data.config.researchUrl, "research_banner");
+  };
+
+  const openBannerAd = () => {
+    const ad = data.config.bannerAd;
+    if (!ad) {
+      return;
+    }
+    captureEvent("banner_ad_tapped", { kind: ad.kind });
+    if (ad.linkUrl) {
+      void openLink(ad.linkUrl, "banner_ad");
+    }
   };
 
   const renderEventCards = (events: readonly EventListItem[]) =>
@@ -80,7 +98,9 @@ export default function HomeScreen() {
           </Carousel>
         </Section>
 
-        <PromoBanner title="Banner Ad" body="from external org" tone="dark" />
+        {data.config.bannerAd ? (
+          <BannerAdSlot ad={data.config.bannerAd} onPress={openBannerAd} />
+        ) : null}
 
         <Section title="Featured Organizations">
           <Carousel
@@ -130,7 +150,7 @@ export default function HomeScreen() {
           onPress={openSurvey}
           action={
             <Button
-              label="Take the Survey"
+              label={data.config.researchLabel}
               size="s"
               tone="primary"
               onPress={openSurvey}
