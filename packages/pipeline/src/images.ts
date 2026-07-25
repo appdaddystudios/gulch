@@ -48,7 +48,13 @@ export type RunImagesOptions = {
 
 const defaultConcurrency = 3;
 const defaultMinDelayMs = 600;
+const transientRetryDelayMs = 2000;
 const defaultSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Rate limits and upstream hiccups (429/5xx) deserve one delayed retry before
+// the event is parked as "failed" until the next scheduled run.
+const isTransientFailure = (result: CoverResult): boolean =>
+  result.status === "failed" && /status (429|5\d\d)\b/.test(result.reason);
 
 export async function runImages(options: RunImagesOptions): Promise<ImagesSummary> {
   const events = await options.db.selectPendingEvents(options.refresh ?? false);
@@ -67,7 +73,7 @@ export async function runImages(options: RunImagesOptions): Promise<ImagesSummar
 
       const event = events[index];
       if (event) {
-        await processEvent(event, { ...options, fetcher, now }, summary);
+        await processEvent(event, { ...options, fetcher, now, sleep }, summary);
       }
 
       if (nextIndex < events.length && minDelayMs > 0) {
@@ -83,13 +89,19 @@ export async function runImages(options: RunImagesOptions): Promise<ImagesSummar
 
 async function processEvent(
   event: ImagesEvent,
-  options: Required<Pick<RunImagesOptions, "db" | "fetcher" | "storage" | "now">> & Pick<RunImagesOptions, "logger">,
+  options: Required<Pick<RunImagesOptions, "db" | "fetcher" | "storage" | "now" | "sleep">> &
+    Pick<RunImagesOptions, "logger">,
   summary: MutableImagesSummary
 ): Promise<void> {
   const fetchedAt = options.now().toISOString();
 
   try {
-    const result = await options.fetcher(event.external_link);
+    let result = await options.fetcher(event.external_link);
+
+    if (isTransientFailure(result)) {
+      await options.sleep(transientRetryDelayMs);
+      result = await options.fetcher(event.external_link);
+    }
 
     if (result.status === "ok") {
       if (result.checksum === event.image_checksum && event.image_status === "ok") {

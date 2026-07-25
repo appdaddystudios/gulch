@@ -10,18 +10,25 @@ type ServiceRoleDbEnv = {
   readonly SUPABASE_KEY: string;
 };
 
+type ImagesSelectResult = PromiseLike<{
+  readonly data: readonly ImagesEvent[] | null;
+  readonly error: null | { readonly message: string };
+}>;
+
+type ImagesFilterBuilder = {
+  readonly order: (
+    column: "webflow_item_id",
+    options: { readonly ascending: boolean }
+  ) => {
+    readonly range: (from: number, to: number) => ImagesSelectResult;
+  };
+};
+
 type SupabaseImagesClient = {
   readonly from: (table: "events") => {
     readonly select: (columns: "webflow_item_id,external_link,image_checksum,image_status") => {
-      readonly in: (
-        column: "image_status",
-        values: readonly ["pending", "failed"]
-      ) => PromiseLike<{ readonly data: readonly ImagesEvent[] | null; readonly error: null | { readonly message: string } }>;
-      readonly not: (
-        column: "webflow_item_id",
-        operator: "is",
-        value: null
-      ) => PromiseLike<{ readonly data: readonly ImagesEvent[] | null; readonly error: null | { readonly message: string } }>;
+      readonly in: (column: "image_status", values: readonly ["pending", "failed"]) => ImagesFilterBuilder;
+      readonly not: (column: "webflow_item_id", operator: "is", value: null) => ImagesFilterBuilder;
     };
     readonly update: (values: EventImageUpdate) => {
       readonly eq: (
@@ -84,19 +91,33 @@ export async function main(): Promise<void> {
   console.log(JSON.stringify(summary, null, 2));
 }
 
+// Supabase caps a single select at max_rows (1000 in config.toml) — page past it
+// or events beyond the cap are silently never scanned.
+const selectPageSize = 1000;
+
 export function createImagesDbClient(supabase: SupabaseImagesClient): ImagesDbClient {
   return {
     async selectPendingEvents(refresh = false) {
-      const query = supabase.from("events").select("webflow_item_id,external_link,image_checksum,image_status");
-      const result = refresh
-        ? await query.not("webflow_item_id", "is", null)
-        : await query.in("image_status", ["pending", "failed"]);
+      const events: ImagesEvent[] = [];
 
-      if (result.error) {
-        throw new Error(`Failed to load image events: ${result.error.message}`);
+      for (let from = 0; ; from += selectPageSize) {
+        const query = supabase.from("events").select("webflow_item_id,external_link,image_checksum,image_status");
+        const filtered = refresh
+          ? query.not("webflow_item_id", "is", null)
+          : query.in("image_status", ["pending", "failed"]);
+        const result = await filtered.order("webflow_item_id", { ascending: true }).range(from, from + selectPageSize - 1);
+
+        if (result.error) {
+          throw new Error(`Failed to load image events: ${result.error.message}`);
+        }
+
+        const page = result.data ?? [];
+        events.push(...page);
+
+        if (page.length < selectPageSize) {
+          return events;
+        }
       }
-
-      return result.data ?? [];
     },
     async updateEventImage(id, fields) {
       const result = await supabase.from("events").update(fields).eq("webflow_item_id", id);

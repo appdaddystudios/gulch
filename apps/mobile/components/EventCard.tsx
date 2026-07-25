@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Badge } from "./Badge";
@@ -26,7 +27,10 @@ export function EventCard({
   saved = false,
   onToggleSave,
 }: EventCardProps) {
-  const hasImage = event.imageStatus === "ok" && Boolean(event.imageUrl);
+  const [imageFailed, setImageFailed] = useState(false);
+  // Any stored image renders — a transient pipeline status ("pending"/"failed"
+  // after a re-mark) must not hide a previously good rehosted image.
+  const hasImage = Boolean(event.imageUrl) && !imageFailed;
   const timeLabel = formatEventTimeCompact(event.startAt, {
     endAt: event.endAt,
     customTimeDescription: event.customTimeDescription,
@@ -51,6 +55,7 @@ export function EventCard({
         {hasImage ? (
           <Image
             accessibilityIgnoresInvertColors
+            onError={() => setImageFailed(true)}
             source={{ uri: event.imageUrl as string }}
             style={styles.image}
           />
