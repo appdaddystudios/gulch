@@ -57,21 +57,25 @@ export default function HomeScreen() {
       ? state.data
       : { events: [], organizers: [], config: HOME_CONFIG_DEFAULTS };
 
-  const openSurvey = () => {
-    captureEvent("survey_banner_tapped");
-    void openLink(data.config.researchUrl, "research_banner");
-  };
+  // While loadHome is pending `data.config` is only the shipped fallback — a
+  // tap then could open the wrong (superseded) survey URL, so wait for ready.
+  const openSurvey =
+    state.status === "ready"
+      ? () => {
+          captureEvent("survey_banner_tapped");
+          void openLink(data.config.researchUrl, "research_banner");
+        }
+      : undefined;
 
-  const openBannerAd = () => {
-    const ad = data.config.bannerAd;
-    if (!ad) {
-      return;
-    }
-    captureEvent("banner_ad_tapped", { kind: ad.kind });
-    if (ad.linkUrl) {
-      void openLink(ad.linkUrl, "banner_ad");
-    }
-  };
+  const bannerAd = data.config.bannerAd;
+  // Linkless creatives are deliberately non-clickable: no handler, no button
+  // affordance, no false tap metrics.
+  const openBannerAd = bannerAd?.linkUrl
+    ? () => {
+        captureEvent("banner_ad_tapped", { kind: bannerAd.kind });
+        void openLink(bannerAd.linkUrl, "banner_ad");
+      }
+    : undefined;
 
   const renderEventCards = (events: readonly EventListItem[]) =>
     events.map((event) => (
@@ -98,9 +102,7 @@ export default function HomeScreen() {
           </Carousel>
         </Section>
 
-        {data.config.bannerAd ? (
-          <BannerAdSlot ad={data.config.bannerAd} onPress={openBannerAd} />
-        ) : null}
+        {bannerAd ? <BannerAdSlot ad={bannerAd} onPress={openBannerAd} /> : null}
 
         <Section title="Featured Organizations">
           <Carousel
