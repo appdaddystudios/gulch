@@ -50,6 +50,11 @@ export default function HomeScreen() {
   const data: HomeData =
     state.status === "ready" ? state.data : { events: [], organizers: [] };
 
+  const openSurvey = () => {
+    captureEvent("survey_banner_tapped");
+    void openLink(RESEARCH_URL, "research_banner");
+  };
+
   const renderEventCards = (events: readonly EventListItem[]) =>
     events.map((event) => (
       <BannerCard
@@ -101,6 +106,7 @@ export default function HomeScreen() {
           body="See what's happening around Atlanta right now."
           tone="light"
           minHeight={180}
+          onPress={() => router.push("/map")}
           action={
             <Button
               label="Explore Map"
@@ -121,15 +127,13 @@ export default function HomeScreen() {
           title="Participate in Research"
           body="Take the survey for a chance to win a $100 Visa gift card, all while supporting the community."
           tone="dark"
+          onPress={openSurvey}
           action={
             <Button
               label="Take the Survey"
               size="s"
               tone="primary"
-              onPress={() => {
-                captureEvent("survey_banner_tapped");
-                void openLink(RESEARCH_URL, "research_banner");
-              }}
+              onPress={openSurvey}
             />
           }
         />

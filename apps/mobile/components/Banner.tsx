@@ -57,6 +57,8 @@ type PromoBannerProps = {
   readonly tone?: PromoBannerTone;
   readonly action?: ReactNode;
   readonly minHeight?: number;
+  // Makes the whole card tappable (the action button still works on its own).
+  readonly onPress?: () => void;
 };
 
 export function PromoBanner({
@@ -65,16 +67,22 @@ export function PromoBanner({
   tone = "dark",
   action,
   minHeight,
+  onPress,
 }: PromoBannerProps) {
   const isLight = tone === "light";
   const textColor = isLight ? color.darkChocolate : color.white;
 
   return (
-    <View
-      style={[
+    <Pressable
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={onPress ? title : undefined}
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [
         styles.promo,
         { backgroundColor: isLight ? color.brown100 : color.brown400 },
         minHeight ? { minHeight } : null,
+        pressed && onPress ? styles.pressed : null,
       ]}
     >
       <View style={styles.promoContent}>
@@ -86,7 +94,7 @@ export function PromoBanner({
         </View>
         {action ? <View>{action}</View> : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
