@@ -2,18 +2,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ImagesEvent } from "../src/images";
 
+type FakeSelectResult = Promise<{
+  readonly data: readonly ImagesEvent[] | null;
+  readonly error: null | { readonly message: string };
+}>;
+
+type FakeFilterBuilder = {
+  readonly order: (
+    column: string,
+    options: { readonly ascending: boolean }
+  ) => {
+    readonly range: (from: number, to: number) => FakeSelectResult;
+  };
+};
+
 type FakeSupabase = {
   readonly from: (table: "events") => {
     readonly select: (columns: string) => {
-      readonly in: (
-        column: string,
-        values: readonly string[]
-      ) => Promise<{ readonly data: readonly ImagesEvent[] | null; readonly error: null | { readonly message: string } }>;
-      readonly not: (
-        column: string,
-        operator: string,
-        value: null
-      ) => Promise<{ readonly data: readonly ImagesEvent[] | null; readonly error: null | { readonly message: string } }>;
+      readonly in: (column: string, values: readonly string[]) => FakeFilterBuilder;
+      readonly not: (column: string, operator: string, value: null) => FakeFilterBuilder;
     };
     readonly update: (values: unknown) => {
       readonly eq: (column: string, value: string) => Promise<{ readonly error: null | { readonly message: string } }>;
@@ -33,6 +40,9 @@ type FakeSupabase = {
 
 let fakeSupabase: FakeSupabase;
 let selectedFilters: string[];
+let selectedRanges: (readonly [number, number])[];
+let selectPages: (readonly ImagesEvent[])[];
+let refreshPages: (readonly ImagesEvent[])[];
 let updates: { readonly values: unknown; readonly column: string; readonly value: string }[];
 let uploads: {
   readonly path: string;
@@ -57,32 +67,39 @@ beforeEach(() => {
   selectError = null;
   updateError = null;
   uploadError = null;
+  selectedRanges = [];
+  selectPages = [
+    [
+      {
+        webflow_item_id: "non-ig-event",
+        external_link: "https://example.com/event",
+        image_checksum: null,
+        image_status: "pending"
+      }
+    ]
+  ];
+  refreshPages = [[]];
+  const pagedBuilder = (pages: (readonly ImagesEvent[])[]): FakeFilterBuilder => ({
+    order: () => ({
+      range: async (from, to) => {
+        selectedRanges.push([from, to]);
+        if (selectError) {
+          return { data: null, error: { message: selectError } };
+        }
+        return { data: pages.shift() ?? [], error: null };
+      }
+    })
+  });
   fakeSupabase = {
     from: () => ({
       select: () => ({
-        in: async (column, values) => {
+        in: (column, values) => {
           selectedFilters.push(`${column}:${values.join(",")}`);
-          if (selectError) {
-            return { data: null, error: { message: selectError } };
-          }
-          return {
-            data: [
-              {
-                webflow_item_id: "non-ig-event",
-                external_link: "https://example.com/event",
-                image_checksum: null,
-                image_status: "pending"
-              }
-            ],
-            error: null
-          };
+          return pagedBuilder(selectPages);
         },
-        not: async (column, operator, value) => {
+        not: (column, operator, value) => {
           selectedFilters.push(`${column}:${operator}:${String(value)}`);
-          if (selectError) {
-            return { data: null, error: { message: selectError } };
-          }
-          return { data: [], error: null };
+          return pagedBuilder(refreshPages);
         }
       }),
       update: (values) => ({
@@ -204,6 +221,26 @@ describe("images CLI adapters", () => {
         options: { contentType: "image/jpeg", upsert: true }
       }
     ]);
+  });
+
+  it("paginates past the Supabase max_rows cap until a short page", async () => {
+    const { createImagesDbClient } = await import("../src/images-cli");
+    const row = (index: number): ImagesEvent => ({
+      webflow_item_id: `event-${index}`,
+      external_link: null,
+      image_checksum: null,
+      image_status: "pending"
+    });
+    selectPages = [Array.from({ length: 1000 }, (_, index) => row(index)), [row(1000)]];
+
+    const events = await createImagesDbClient(fakeSupabase).selectPendingEvents();
+
+    expect(events).toHaveLength(1001);
+    expect(selectedRanges).toEqual([
+      [0, 999],
+      [1000, 1999]
+    ]);
+    expect(selectedFilters).toEqual(["image_status:pending,failed", "image_status:pending,failed"]);
   });
 
   it("selects all events when refresh is enabled and runs main without hitting Instagram for non-IG events", async () => {

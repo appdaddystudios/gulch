@@ -128,6 +128,75 @@ describe("runImages", () => {
     expect(summary).toEqual({ scanned: 5, fetched: 5, unavailable: 0, failed: 0, skipped: 0 });
   });
 
+  it("retries once after a delay on transient 429/5xx failures, then succeeds", async () => {
+    const sleeps: number[] = [];
+    const attempts: number[] = [];
+    let calls = 0;
+
+    const summary = await runImages({
+      db: {
+        selectPendingEvents: async () => [
+          {
+            webflow_item_id: "event-429",
+            external_link: "https://instagram.com/p/retry",
+            image_checksum: null,
+            image_status: "pending"
+          }
+        ],
+        updateEventImage: async () => undefined
+      },
+      storage: {
+        uploadEventImage: async (eventId) => `https://cdn.test/${eventId}.jpg`
+      },
+      minDelayMs: 0,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+      fetcher: async () => {
+        calls += 1;
+        attempts.push(calls);
+        if (calls === 1) {
+          return { status: "failed", reason: "Instagram post request failed with status 429" };
+        }
+        return okResult("checksum-retry");
+      }
+    });
+
+    expect(attempts).toEqual([1, 2]);
+    expect(sleeps).toEqual([2000]);
+    expect(summary).toEqual({ scanned: 1, fetched: 1, unavailable: 0, failed: 0, skipped: 0 });
+  });
+
+  it("does not retry non-transient failures", async () => {
+    let calls = 0;
+
+    const summary = await runImages({
+      db: {
+        selectPendingEvents: async () => [
+          {
+            webflow_item_id: "event-403",
+            external_link: "https://instagram.com/p/hard-fail",
+            image_checksum: null,
+            image_status: "pending"
+          }
+        ],
+        updateEventImage: async () => undefined
+      },
+      storage: {
+        uploadEventImage: async (eventId) => `https://cdn.test/${eventId}.jpg`
+      },
+      minDelayMs: 0,
+      logger: { info: () => undefined, error: () => undefined },
+      fetcher: async () => {
+        calls += 1;
+        return { status: "failed", reason: "Instagram post request failed with status 403" };
+      }
+    });
+
+    expect(calls).toBe(1);
+    expect(summary).toEqual({ scanned: 1, fetched: 0, unavailable: 0, failed: 1, skipped: 0 });
+  });
+
   it("does not let one event exception abort the run", async () => {
     const updates: string[] = [];
     const summary = await runImages({

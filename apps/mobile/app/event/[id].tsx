@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -94,6 +94,7 @@ function Content({
 }) {
   const insets = useSafeAreaInsets();
   const { isSaved, toggle } = useSavedEvents();
+  const [heroImageFailed, setHeroImageFailed] = useState(false);
 
   if (state.status === "loading") {
     return (
@@ -134,7 +135,9 @@ function Content({
   }
 
   const event = state.data;
-  const hasImage = event.imageStatus === "ok" && Boolean(event.imageUrl);
+  // Any stored image renders — a transient pipeline status ("pending"/"failed"
+  // after a re-mark) must not hide a previously good rehosted image.
+  const hasImage = Boolean(event.imageUrl) && !heroImageFailed;
 
   return (
     <View style={styles.flex}>
@@ -143,6 +146,7 @@ function Content({
           {hasImage ? (
             <Image
               accessibilityIgnoresInvertColors
+              onError={() => setHeroImageFailed(true)}
               source={{ uri: event.imageUrl as string }}
               style={styles.heroImage}
             />
