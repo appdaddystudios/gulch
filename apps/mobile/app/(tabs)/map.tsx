@@ -1,21 +1,236 @@
-import { StyleSheet, View } from "react-native";
+import Mapbox from "@rnmapbox/maps";
+import { useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
+import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
+import { EventCard } from "../../components/EventCard";
 import { Header } from "../../components/Header";
 import { MapIcon } from "../../components/icons";
-import { color } from "../../theme";
+import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
+import { useSavedEvents } from "../../hooks/useSavedEvents";
+import { listMapVenues, type MapVenue } from "../../lib/mapEvents";
+import { color, radius, space, type as typePreset } from "../../theme";
+
+// Expo inlines only static dot-notation env reads.
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
+
+if (MAPBOX_TOKEN) {
+  void Mapbox.setAccessToken(MAPBOX_TOKEN);
+}
+
+// Metro Atlanta, framed around downtown/midtown where most venues cluster.
+const ATLANTA_CENTER: readonly [number, number] = [-84.388, 33.758];
+const DEFAULT_ZOOM = 11;
+const PIN_SIZE = 36;
 
 export default function MapScreen() {
+  const client = useDbClient();
+  const loader = useCallback(
+    (c: NonNullable<ReturnType<typeof useDbClient>>) => listMapVenues(c),
+    [],
+  );
+  const { state, reload } = useQuery(client, loader);
+
   return (
     <View style={styles.screen}>
       <Header />
-      <View style={styles.body}>
+      <Content state={state} onRetry={reload} />
+    </View>
+  );
+}
+
+function Content({
+  state,
+  onRetry,
+}: {
+  readonly state: QueryState<readonly MapVenue[]>;
+  readonly onRetry: () => void;
+}) {
+  const router = useRouter();
+  const { isSaved, toggle } = useSavedEvents();
+  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
+
+  if (!MAPBOX_TOKEN) {
+    return (
+      <Centered>
         <EmptyState
           icon={<MapIcon size={48} color={color.gulchGreen} />}
-          title="Hotspots Map"
-          subtitle="An interactive map of what's happening around Atlanta is coming soon."
+          title="Map unavailable"
+          subtitle="The Mapbox token is not configured for this build."
         />
-      </View>
+      </Centered>
+    );
+  }
+
+  if (state.status === "loading") {
+    return (
+      <Centered>
+        <ActivityIndicator color={color.gulchGreen} size="large" />
+      </Centered>
+    );
+  }
+
+  if (state.status === "missing-client") {
+    return (
+      <Centered>
+        <EmptyState
+          title="Not connected"
+          subtitle="Supabase environment variables are not configured."
+        />
+      </Centered>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <Centered>
+        <EmptyState
+          icon={<MapIcon size={48} color={color.gulchGreen} />}
+          title="Couldn't load the map"
+          subtitle={state.message}
+          action={
+            <Button label="Try Again" size="s" tone="primary" onPress={onRetry} />
+          }
+        />
+      </Centered>
+    );
+  }
+
+  const venues = state.data;
+  const selectedVenue =
+    venues.find((venue) => venue.id === selectedVenueId) ?? null;
+
+  return (
+    <View style={styles.mapWrap}>
+      <Mapbox.MapView
+        style={styles.map}
+        styleURL={Mapbox.StyleURL.Dark}
+        scaleBarEnabled={false}
+        onPress={() => setSelectedVenueId(null)}
+      >
+        <Mapbox.Camera
+          defaultSettings={{
+            centerCoordinate: [...ATLANTA_CENTER],
+            zoomLevel: DEFAULT_ZOOM,
+          }}
+        />
+        {venues.map((venue) => (
+          <Mapbox.MarkerView
+            key={venue.id}
+            coordinate={[venue.longitude, venue.latitude]}
+            allowOverlap
+          >
+            <VenuePin
+              venue={venue}
+              selected={venue.id === selectedVenueId}
+              onPress={() =>
+                setSelectedVenueId((current) =>
+                  current === venue.id ? null : venue.id,
+                )
+              }
+            />
+          </Mapbox.MarkerView>
+        ))}
+      </Mapbox.MapView>
+
+      {venues.length === 0 ? (
+        <View style={styles.emptyOverlay} pointerEvents="none">
+          <EmptyState
+            icon={<MapIcon size={48} color={color.gulchGreen} />}
+            title="Nothing to map yet"
+            subtitle="No upcoming events with locations yet."
+          />
+        </View>
+      ) : null}
+
+      {selectedVenue ? (
+        <VenueCards
+          venue={selectedVenue}
+          isSaved={isSaved}
+          onToggleSave={toggle}
+          onOpenEvent={(id) => router.push(`/event/${id}`)}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function Centered({ children }: { readonly children: React.ReactNode }) {
+  return <View style={styles.centered}>{children}</View>;
+}
+
+function VenuePin({
+  venue,
+  selected,
+  onPress,
+}: {
+  readonly venue: MapVenue;
+  readonly selected: boolean;
+  readonly onPress: () => void;
+}) {
+  const count = venue.events.length;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${venue.name}, ${count} ${count === 1 ? "event" : "events"}`}
+      accessibilityState={{ selected }}
+      hitSlop={6}
+      onPress={onPress}
+      style={[styles.pin, selected ? styles.pinSelected : null]}
+    >
+      <Text style={styles.pinCount}>{count}</Text>
+    </Pressable>
+  );
+}
+
+function VenueCards({
+  venue,
+  isSaved,
+  onToggleSave,
+  onOpenEvent,
+}: {
+  readonly venue: MapVenue;
+  readonly isSaved: (id: string) => boolean;
+  readonly onToggleSave: (id: string) => void;
+  readonly onOpenEvent: (id: string) => void;
+}) {
+  const { width } = useWindowDimensions();
+  const cardWidth = width - space.md * 2;
+
+  return (
+    <View style={styles.venueSheet}>
+      <Text style={styles.venueName} numberOfLines={1}>
+        {venue.name}
+      </Text>
+      <FlatList
+        horizontal
+        data={venue.events}
+        keyExtractor={(event) => event.id}
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={cardWidth + space.md}
+        decelerationRate="fast"
+        contentContainerStyle={styles.venueCardsRow}
+        renderItem={({ item }) => (
+          <View style={[styles.venueCard, { width: cardWidth }]}>
+            <EventCard
+              event={item}
+              onPress={() => onOpenEvent(item.id)}
+              saved={isSaved(item.id)}
+              onToggleSave={() => onToggleSave(item.id)}
+            />
+          </View>
+        )}
+      />
     </View>
   );
 }
@@ -25,8 +240,75 @@ const styles = StyleSheet.create({
     backgroundColor: color.darkChocolate,
     flex: 1,
   },
-  body: {
+  centered: {
     flex: 1,
     justifyContent: "center",
+  },
+  mapWrap: {
+    flex: 1,
+  },
+  map: {
+    flex: 1,
+  },
+  emptyOverlay: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  pin: {
+    alignItems: "center",
+    backgroundColor: color.gulchGreen,
+    borderColor: color.oreo,
+    borderRadius: PIN_SIZE / 2,
+    borderWidth: 2,
+    height: PIN_SIZE,
+    justifyContent: "center",
+    // Hard offset shadow (2px 2px 0 #291407) per the brand's card language.
+    shadowColor: color.oreo,
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+    width: PIN_SIZE,
+  },
+  pinSelected: {
+    borderColor: color.white,
+    transform: [{ scale: 1.2 }],
+  },
+  pinCount: {
+    ...typePreset.captionBold12,
+    color: color.oreo,
+  },
+  venueSheet: {
+    backgroundColor: color.darkChocolate,
+    borderColor: color.oreo,
+    borderTopWidth: 2,
+    bottom: 0,
+    gap: space.md,
+    left: 0,
+    paddingBottom: space.xl,
+    paddingTop: space.lg,
+    position: "absolute",
+    right: 0,
+  },
+  venueName: {
+    ...typePreset.bodyBold14,
+    color: color.white,
+    paddingHorizontal: space.xl,
+  },
+  venueCardsRow: {
+    gap: space.md,
+    paddingHorizontal: space.md,
+  },
+  venueCard: {
+    backgroundColor: color.brown400,
+    borderColor: color.oreo,
+    borderRadius: radius.image,
+    borderWidth: 1,
+    paddingHorizontal: space.md,
   },
 });
