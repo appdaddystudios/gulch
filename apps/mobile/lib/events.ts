@@ -37,7 +37,7 @@ const embeddedNameSchema = z
   .nullable()
   .optional();
 
-const rawEventSchema = z.object({
+export const rawEventSchema = z.object({
   webflow_item_id: z.string(),
   name: z.string(),
   start_at: z.string(),

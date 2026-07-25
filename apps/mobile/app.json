@@ -10,7 +10,8 @@
       "expo-router",
       "expo-font",
       "@sentry/react-native",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@rnmapbox/maps"
     ],
     "splash": {
       "image": "./assets/icon.png",
