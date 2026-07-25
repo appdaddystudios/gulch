@@ -15,17 +15,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { Header } from "../../components/Header";
+import { WebView } from "react-native-webview";
+
 import {
   BookmarkIcon,
+  CloseIcon,
   DotsHorizontalIcon,
   GulchLogo,
   MarkerPinIcon,
+  PlayIcon,
   ShareIcon,
   TicketIcon,
 } from "../../components/icons";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { getEventDetail, type EventDetail } from "../../lib/events";
+import { instagramEmbedUrl } from "../../lib/instagramEmbed";
 import { openLink } from "../../lib/openLink";
 import { captureEvent } from "../../lib/telemetry";
 import { formatEventDateTime } from "../../lib/format";
@@ -109,6 +114,7 @@ function Content({
   const insets = useSafeAreaInsets();
   const { isSaved, toggle } = useSavedEvents();
   const [heroImageFailed, setHeroImageFailed] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
 
   if (state.status === "loading") {
     return (
@@ -152,30 +158,81 @@ function Content({
   // Any stored image renders — a transient pipeline status ("pending"/"failed"
   // after a re-mark) must not hide a previously good rehosted image.
   const hasImage = Boolean(event.imageUrl) && !heroImageFailed;
+  // The raw mp4 is not scrapeable anonymously anymore, so playback uses
+  // Instagram's public /embed/ player inside a WebView.
+  const embedUrl = event.isVideo ? instagramEmbedUrl(event.externalLink) : null;
+
+  const openVideo = () => {
+    captureEvent("video_played", { event_id: event.id });
+    setVideoOpen(true);
+  };
 
   return (
     <View style={styles.flex}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          {hasImage ? (
-            <Image
-              accessibilityIgnoresInvertColors
-              onError={() => setHeroImageFailed(true)}
-              source={{ uri: event.imageUrl as string }}
-              style={styles.heroImage}
-            />
+          {videoOpen && embedUrl ? (
+            <>
+              <WebView
+                allowsInlineMediaPlayback
+                onError={() => setVideoOpen(false)}
+                renderLoading={() => (
+                  <View style={styles.videoLoading}>
+                    <ActivityIndicator color={color.gulchGreen} size="large" />
+                  </View>
+                )}
+                source={{ uri: embedUrl }}
+                startInLoadingState
+                style={styles.heroVideo}
+              />
+              <Pressable
+                accessibilityLabel="Close video"
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => setVideoOpen(false)}
+                style={styles.videoClose}
+              >
+                <CloseIcon size={18} color={color.white} />
+              </Pressable>
+            </>
           ) : (
-            <View style={styles.heroPlaceholder}>
-              <GulchLogo width={160} height={20} />
-            </View>
+            <>
+              {hasImage ? (
+                <Image
+                  accessibilityIgnoresInvertColors
+                  onError={() => setHeroImageFailed(true)}
+                  source={{ uri: event.imageUrl as string }}
+                  style={styles.heroImage}
+                />
+              ) : (
+                <View style={styles.heroPlaceholder}>
+                  <GulchLogo width={160} height={20} />
+                </View>
+              )}
+              <LinearGradient
+                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.1)", "rgba(0,0,0,0.8)"]}
+                locations={[0, 0.7, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
+              {embedUrl ? (
+                <Pressable
+                  accessibilityLabel="Watch video"
+                  accessibilityRole="button"
+                  onPress={openVideo}
+                  style={({ pressed }) => [
+                    styles.watchButton,
+                    pressed ? styles.watchPressed : null,
+                  ]}
+                >
+                  <PlayIcon size={16} color={color.white} />
+                  <Text style={styles.watchLabel}>Watch video</Text>
+                </Pressable>
+              ) : null}
+            </>
           )}
-          <LinearGradient
-            colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.1)", "rgba(0,0,0,0.8)"]}
-            locations={[0, 0.7, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
         </View>
 
         <View style={styles.form}>
@@ -275,6 +332,52 @@ const styles = StyleSheet.create({
     height: "100%",
     justifyContent: "center",
     width: "100%",
+  },
+  heroVideo: {
+    backgroundColor: color.oreo,
+    flex: 1,
+  },
+  videoLoading: {
+    alignItems: "center",
+    backgroundColor: color.oreo,
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  videoClose: {
+    alignItems: "center",
+    backgroundColor: color.darkChocolate,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    position: "absolute",
+    right: space.lg,
+    top: space.lg,
+    width: 36,
+  },
+  watchButton: {
+    alignItems: "center",
+    backgroundColor: color.darkChocolate,
+    borderRadius: radius.pill,
+    bottom: space.lg,
+    flexDirection: "row",
+    gap: space.xs,
+    height: 36,
+    justifyContent: "center",
+    paddingHorizontal: space.lg,
+    position: "absolute",
+    right: space.lg,
+  },
+  watchPressed: {
+    opacity: 0.85,
+  },
+  watchLabel: {
+    ...typePreset.caption12,
+    color: color.white,
+    fontFamily: font.medium,
   },
   form: {
     gap: space.lg,

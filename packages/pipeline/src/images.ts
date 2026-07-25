@@ -6,6 +6,7 @@ export type ImagesEvent = {
   readonly external_link: string | null;
   readonly image_checksum: string | null;
   readonly image_status: string;
+  readonly is_video?: boolean;
 };
 
 export type EventImageUpdate = {
@@ -13,6 +14,7 @@ export type EventImageUpdate = {
   readonly image_status: string;
   readonly image_checksum?: string | null;
   readonly image_fetched_at: string;
+  readonly is_video?: boolean;
 };
 
 export type ImagesDbClient = {
@@ -105,6 +107,15 @@ async function processEvent(
 
     if (result.status === "ok") {
       if (result.checksum === event.image_checksum && event.image_status === "ok") {
+        // Unchanged image, but video detection may be new knowledge (the
+        // is_video column postdates most rows) — persist just the flag flip.
+        if ((event.is_video ?? false) !== result.isVideo) {
+          await options.db.updateEventImage(event.webflow_item_id, {
+            image_status: "ok",
+            is_video: result.isVideo,
+            image_fetched_at: fetchedAt
+          });
+        }
         summary.skipped += 1;
         return;
       }
@@ -114,7 +125,8 @@ async function processEvent(
         image_url: `${publicUrl}?v=${result.checksum.slice(0, 8)}`,
         image_status: "ok",
         image_checksum: result.checksum,
-        image_fetched_at: fetchedAt
+        image_fetched_at: fetchedAt,
+        is_video: result.isVideo
       });
       summary.fetched += 1;
       return;

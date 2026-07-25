@@ -18,7 +18,7 @@ export type MapVenue = {
 // Same event columns as EVENT_SELECT, with the locations embed widened to
 // carry the id + coordinates the map pins need.
 export const MAP_EVENT_SELECT =
-  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, external_link, locations(webflow_item_id, name, latitude, longitude), event_organizers(organizers(name))";
+  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, is_video, external_link, locations(webflow_item_id, name, latitude, longitude), event_organizers(organizers(name))";
 
 const rawLocationSchema = z.object({
   webflow_item_id: z.string(),
