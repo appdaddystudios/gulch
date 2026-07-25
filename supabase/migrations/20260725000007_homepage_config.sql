@@ -17,10 +17,17 @@ create table public.homepage_config (
 
 insert into public.homepage_config (id) values (1);
 
+-- Keep updated_at honest on typed updates that omit it (reuse shared trigger).
+create trigger homepage_config_set_updated_at
+before update on public.homepage_config
+for each row execute function public.set_updated_at();
+
 alter table public.homepage_config enable row level security;
 
 create policy homepage_config_public_read on public.homepage_config
   for select to anon, authenticated using (true);
+create policy homepage_config_all_service_role on public.homepage_config
+  for all to service_role using (true) with check (true);
 
 -- Admin-curated homepage Featured Organizations. Replaces the Webflow-synced
 -- organizers.is_featured flag as the app's source (the sync would clobber
@@ -41,6 +48,13 @@ alter table public.featured_organizers enable row level security;
 
 create policy featured_organizers_public_read on public.featured_organizers
   for select to anon, authenticated using (true);
+create policy featured_organizers_all_service_role on public.featured_organizers
+  for all to service_role using (true) with check (true);
+
+-- Explicit grants (mirror migrations 0001/0003): required in environments
+-- without Supabase's hosted default privileges (e.g. the ephemeral test PG).
+grant select on public.homepage_config, public.featured_organizers to anon, authenticated;
+grant all on public.homepage_config, public.featured_organizers to service_role;
 
 -- Public bucket for uploaded banner-ad images (same pattern as event-images).
 do $$
