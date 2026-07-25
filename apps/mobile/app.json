@@ -3,12 +3,12 @@
     "name": "Gulch",
     "slug": "gulch",
     "scheme": "gulch",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "orientation": "portrait",
-    "newArchEnabled": true,
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      "@sentry/react-native"
     ],
     "ios": {
       "supportsTablet": true,
