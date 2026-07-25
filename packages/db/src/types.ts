@@ -268,6 +268,68 @@ export type Database = {
           }
         ];
       };
+      readonly homepage_config: {
+        readonly Row: {
+          readonly id: number;
+          readonly research_label: string;
+          readonly research_url: string;
+          readonly banner_enabled: boolean;
+          readonly banner_title: string | null;
+          readonly banner_body: string | null;
+          readonly banner_image_url: string | null;
+          readonly banner_link_url: string | null;
+          readonly updated_at: string;
+        };
+        readonly Insert: {
+          readonly id?: number;
+          readonly research_label?: string;
+          readonly research_url?: string;
+          readonly banner_enabled?: boolean;
+          readonly banner_title?: string | null;
+          readonly banner_body?: string | null;
+          readonly banner_image_url?: string | null;
+          readonly banner_link_url?: string | null;
+          readonly updated_at?: string;
+        };
+        readonly Update: {
+          readonly id?: number;
+          readonly research_label?: string;
+          readonly research_url?: string;
+          readonly banner_enabled?: boolean;
+          readonly banner_title?: string | null;
+          readonly banner_body?: string | null;
+          readonly banner_image_url?: string | null;
+          readonly banner_link_url?: string | null;
+          readonly updated_at?: string;
+        };
+        readonly Relationships: [];
+      };
+      readonly featured_organizers: {
+        readonly Row: {
+          readonly organizer_id: string;
+          readonly position: number;
+          readonly created_at: string;
+        };
+        readonly Insert: {
+          readonly organizer_id: string;
+          readonly position?: number;
+          readonly created_at?: string;
+        };
+        readonly Update: {
+          readonly organizer_id?: string;
+          readonly position?: number;
+          readonly created_at?: string;
+        };
+        readonly Relationships: [
+          {
+            readonly foreignKeyName: "featured_organizers_organizer_id_fkey";
+            readonly columns: ["organizer_id"];
+            readonly isOneToOne: true;
+            readonly referencedRelation: "organizers";
+            readonly referencedColumns: ["webflow_item_id"];
+          }
+        ];
+      };
     };
     readonly Views: Record<string, never>;
     readonly Functions: Record<string, never>;
