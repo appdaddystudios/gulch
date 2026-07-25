@@ -99,7 +99,12 @@ function Content({
           title="Couldn't load the map"
           subtitle={state.message}
           action={
-            <Button label="Try Again" size="s" tone="primary" onPress={onRetry} />
+            <Button
+              label="Try Again"
+              size="s"
+              tone="primary"
+              onPress={onRetry}
+            />
           }
         />
       </Centered>
