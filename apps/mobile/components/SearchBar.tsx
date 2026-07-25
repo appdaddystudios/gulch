@@ -93,6 +93,11 @@ const styles = StyleSheet.create({
   input: {
     ...typePreset.body16,
     color: color.oreo,
+    includeFontPadding: false,
+    // An explicit lineHeight bottom-aligns TextInput text on iOS — let the
+    // input center its single line naturally inside the 48px pill instead.
+    lineHeight: undefined,
     padding: 0,
+    textAlignVertical: "center",
   },
 });

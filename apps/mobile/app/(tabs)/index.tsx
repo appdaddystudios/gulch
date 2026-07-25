@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { useCallback } from "react";
 import {
   ActivityIndicator,
-  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +16,7 @@ import { SearchBar } from "../../components/SearchBar";
 import { SectionTitle } from "../../components/SectionTitle";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { listUpcomingEvents, type EventListItem } from "../../lib/events";
+import { openLink } from "../../lib/openLink";
 import {
   listFeaturedOrganizers,
   type FeaturedOrganizer,
@@ -38,11 +38,7 @@ const loadHome = async (
   return { events, organizers };
 };
 
-const openLink = (url: string | null) => {
-  if (url) {
-    void Linking.openURL(url);
-  }
-};
+const RESEARCH_URL = "https://www.gulchmagazine.com/research";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -91,7 +87,7 @@ export default function HomeScreen() {
                 title={organizer.name}
                 subtitle="Organization"
                 height={96}
-                onPress={() => openLink(organizer.instagramUrl)}
+                onPress={() => void openLink(organizer.instagramUrl)}
               />
             ))}
           </Carousel>
@@ -122,7 +118,14 @@ export default function HomeScreen() {
           title="Participate in Research"
           body="Take the survey for a chance to win a $100 Visa gift card, all while supporting the community."
           tone="dark"
-          action={<Button label="Take the Survey" size="s" tone="primary" />}
+          action={
+            <Button
+              label="Take the Survey"
+              size="s"
+              tone="primary"
+              onPress={() => void openLink(RESEARCH_URL)}
+            />
+          }
         />
 
         {/* TODO: back with on-device view history. */}
