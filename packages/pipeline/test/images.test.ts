@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 import { runImages, type ImagesDbClient, type ImagesEvent, type StorageClient } from "../src/images";
 import type { CoverResult } from "../src/image-fetcher";
 
-const okResult = (checksum: string, bytes = new Uint8Array([1, 2, 3])): CoverResult => ({
+const okResult = (checksum: string, bytes = new Uint8Array([1, 2, 3]), isVideo = false): CoverResult => ({
   status: "ok",
   bytes,
   contentType: "image/jpeg",
-  checksum
+  checksum,
+  isVideo
 });
 
 describe("runImages", () => {
@@ -66,7 +67,8 @@ describe("runImages", () => {
           image_url: "https://supabase.test/storage/v1/object/public/event-images/events/upload-event.jpg?v=abcdef12",
           image_status: "ok",
           image_checksum: "abcdef1234567890",
-          image_fetched_at: "2026-06-30T12:00:00.000Z"
+          image_fetched_at: "2026-06-30T12:00:00.000Z",
+          is_video: false
         }
         },
         {
@@ -88,6 +90,43 @@ describe("runImages", () => {
     );
     expect(logs).toEqual(["Image fetch failed for failed-event: rate limited"]);
     expect(summary).toEqual({ scanned: 4, fetched: 1, unavailable: 1, failed: 1, skipped: 1 });
+  });
+
+  it("updates only the video flag when an unchanged image gains video detection", async () => {
+    const updates: { readonly id: string; readonly fields: unknown }[] = [];
+
+    const summary = await runImages({
+      db: {
+        selectPendingEvents: async () => [
+          { webflow_item_id: "video-flip", external_link: "https://instagram.com/p/v", image_checksum: "same", image_status: "ok", is_video: false },
+          { webflow_item_id: "video-same", external_link: "https://instagram.com/p/s", image_checksum: "same2", image_status: "ok", is_video: true }
+        ],
+        updateEventImage: async (id, fields) => {
+          updates.push({ id, fields });
+        }
+      },
+      storage: {
+        uploadEventImage: async () => {
+          throw new Error("unchanged images must not re-upload");
+        }
+      },
+      refresh: true,
+      now: () => new Date("2026-07-25T12:00:00.000Z"),
+      fetcher: async (url) =>
+        url?.endsWith("/v") ? okResult("same", new Uint8Array([1]), true) : okResult("same2", new Uint8Array([1]), true)
+    });
+
+    expect(updates).toEqual([
+      {
+        id: "video-flip",
+        fields: {
+          image_status: "ok",
+          is_video: true,
+          image_fetched_at: "2026-07-25T12:00:00.000Z"
+        }
+      }
+    ]);
+    expect(summary).toEqual({ scanned: 2, fetched: 0, unavailable: 0, failed: 0, skipped: 2 });
   });
 
   it("honors concurrency and sleeps between worker requests", async () => {

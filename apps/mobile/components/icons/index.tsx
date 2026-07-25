@@ -272,6 +272,18 @@ export function DotsHorizontalIcon({
   );
 }
 
+export function PlayIcon({ size = 16, color = palette.white }: IconProps) {
+  // Filled play triangle — the details-hero "Watch video" affordance.
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M7 5.5V18.5C7 19.3 7.9 19.79 8.57 19.36L18.79 12.86C19.41 12.46 19.41 11.54 18.79 11.14L8.57 4.64C7.9 4.21 7 4.7 7 5.5Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
 export function CloseIcon({ size = 18, color = palette.grey80 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

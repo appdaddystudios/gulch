@@ -166,10 +166,14 @@ result_count), `map_opened`, `map_pin_tapped`, `newsletter_viewed`, `calendar_vi
   of `cover` cropping the edges.
 - Home promo banners (Hotspots Map, Participate in Research): entire card tappable, not just
   the small button.
-- OPTIONAL (revisit if complicated): Instagram video posts currently rehost the thumbnail,
-  which bakes in IG's play button. Real playback needs pipeline work (scrape `og:video` →
-  `events.video_url` + storage rehost) + `expo-video` player on the details hero. Deferred —
-  not part of this batch unless requested again.
+- Instagram video playback (user-requested 2026-07-25, built as `feat/ig-video-embed`):
+  the `og:video` scrape approach is DEAD — Instagram no longer serves any video URL to
+  anonymous clients (verified: no `og:video`, `?__a=1` is 404, embed HTML carries no mp4).
+  Shipped design instead: pipeline detects video posts from the canonical `og:url`
+  (`/reel/`·`/tv/` vs `/p/`) → `events.is_video` (migration 0006) → details hero shows a
+  "Watch video" pill and swaps to Instagram's public `/embed/` player in a WebView
+  (`react-native-webview` already shipped — NO new native module). Backfill via
+  `images --refresh`.
 
 **T5.1** Version/build-number bump; confirm EAS envs contain: 3 Supabase vars, POSTHOG pair,
 `EXPO_PUBLIC_MAPBOX_TOKEN`, `SENTRY_DISABLE_AUTO_UPLOAD=true` (no Mapbox download token

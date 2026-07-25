@@ -31,6 +31,7 @@
 | `newsletter_viewed` | — | Newsletter tab mount |
 | `calendar_view_toggled` | `mode` (`list` \| `calendar`) | Calendar toggle, only on actual change |
 | `survey_banner_tapped` | — | Home research banner button (also emits `link_opened`) |
+| `video_played` | `event_id` | Event details "Watch video" tap (Instagram embed player) |
 
 ## Conventions
 

@@ -17,6 +17,8 @@ export type EventListItem = {
   readonly imageStatus: EventImageStatus;
   readonly ticketsRequired: boolean;
   readonly editorsPick: boolean;
+  // Linked Instagram post is a video (reel) — the details hero offers playback.
+  readonly isVideo: boolean;
   readonly externalLink: string | null;
   readonly organizerName: string | null;
   readonly locationName: string | null;
@@ -26,7 +28,7 @@ export type EventDetail = EventListItem;
 
 // PostgREST select used by every events query in the app.
 export const EVENT_SELECT =
-  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, external_link, locations(name), event_organizers(organizers(name))";
+  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, is_video, external_link, locations(name), event_organizers(organizers(name))";
 
 const namedSchema = z.object({ name: z.string() });
 
@@ -48,6 +50,7 @@ export const rawEventSchema = z.object({
   tickets_required: z.boolean(),
   // Older rows (pre-migration) may omit the column; default to false.
   editors_pick: z.boolean().optional().default(false),
+  is_video: z.boolean().optional().default(false),
   external_link: z.string().nullable(),
   locations: embeddedNameSchema,
   event_organizers: z
@@ -87,6 +90,7 @@ export const toEventListItem = (raw: RawEvent): EventListItem => ({
   imageStatus: raw.image_status,
   ticketsRequired: raw.tickets_required,
   editorsPick: raw.editors_pick,
+  isVideo: raw.is_video,
   externalLink: raw.external_link,
   organizerName: organizerName(raw.event_organizers),
   locationName: firstName(raw.locations),

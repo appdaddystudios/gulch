@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
 
-import { CRAWLER_UA, extractOgImage, isInstagramPostUrl } from "./instagram";
+import { CRAWLER_UA, extractOgImage, extractOgUrl, isInstagramPostUrl, isVideoCanonicalUrl } from "./instagram";
 import type { FetchLike } from "./webflow-client";
 
 export type CoverResult =
-  | { readonly status: "ok"; readonly bytes: Uint8Array; readonly contentType: string; readonly checksum: string }
+  | {
+      readonly status: "ok";
+      readonly bytes: Uint8Array;
+      readonly contentType: string;
+      readonly checksum: string;
+      readonly isVideo: boolean;
+    }
   | { readonly status: "unavailable" }
   | { readonly status: "failed"; readonly reason: string };
 
@@ -31,10 +37,13 @@ export async function fetchInstagramCover(
       return { status: "failed", reason: `Instagram post request failed with status ${postResponse.status}` };
     }
 
-    const imageUrl = extractOgImage(await postResponse.text());
+    const postHtml = await postResponse.text();
+    const imageUrl = extractOgImage(postHtml);
     if (imageUrl === null) {
       return { status: "unavailable" };
     }
+
+    const isVideo = isVideoCanonicalUrl(extractOgUrl(postHtml));
 
     const imageResponse = await deps.fetch(imageUrl, { headers: { "user-agent": ua } });
     if (!imageResponse.ok) {
@@ -56,7 +65,8 @@ export async function fetchInstagramCover(
       status: "ok",
       bytes,
       contentType,
-      checksum: createHash("sha256").update(bytes).digest("hex")
+      checksum: createHash("sha256").update(bytes).digest("hex"),
+      isVideo
     };
   } catch (error) {
     return { status: "failed", reason: error instanceof Error ? error.message : String(error) };

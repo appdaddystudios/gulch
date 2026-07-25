@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CRAWLER_UA, extractOgImage, isInstagramPostUrl } from "../src/instagram";
+import { CRAWLER_UA, extractOgImage, extractOgUrl, isInstagramPostUrl, isVideoCanonicalUrl } from "../src/instagram";
 
 describe("isInstagramPostUrl", () => {
   it("accepts instagram post, reel, and tv URLs on instagram.com subdomains", () => {
@@ -42,5 +42,31 @@ describe("extractOgImage", () => {
   it("returns null when og:image is absent or malformed", () => {
     expect(extractOgImage("<html><head></head><body></body></html>")).toBeNull();
     expect(extractOgImage('<meta property="og:image">')).toBeNull();
+  });
+});
+
+describe("extractOgUrl", () => {
+  it("returns the canonical og:url content", () => {
+    expect(
+      extractOgUrl('<meta property="og:url" content="https://www.instagram.com/gvgatl/reel/DZrwvUGuaV0/" />')
+    ).toBe("https://www.instagram.com/gvgatl/reel/DZrwvUGuaV0/");
+  });
+
+  it("returns null when og:url is absent", () => {
+    expect(extractOgUrl('<meta property="og:image" content="https://cdn.test/a.jpg">')).toBeNull();
+  });
+});
+
+describe("isVideoCanonicalUrl", () => {
+  it("flags reel and tv canonical paths as video", () => {
+    expect(isVideoCanonicalUrl("https://www.instagram.com/gvgatl/reel/DZrwvUGuaV0/")).toBe(true);
+    expect(isVideoCanonicalUrl("https://www.instagram.com/tv/ABC123/")).toBe(true);
+  });
+
+  it("treats photo canonicals, null, and junk as not video", () => {
+    expect(isVideoCanonicalUrl("https://www.instagram.com/callanwoldefinearts/p/DN8ytffDPMK/")).toBe(false);
+    expect(isVideoCanonicalUrl("https://example.com/reel/ABC123/")).toBe(false);
+    expect(isVideoCanonicalUrl(null)).toBe(false);
+    expect(isVideoCanonicalUrl("not a url")).toBe(false);
   });
 });

@@ -65,6 +65,7 @@ describe("listUpcomingEvents", () => {
         imageStatus: "ok",
         ticketsRequired: true,
         editorsPick: false,
+        isVideo: false,
         externalLink: "https://instagram.com/p/abc",
         organizerName: "GULCH Magazine",
         locationName: "El Sótano",
@@ -86,6 +87,22 @@ describe("listUpcomingEvents", () => {
 
   it("requests the editors_pick column", () => {
     expect(EVENT_SELECT).toContain("editors_pick");
+  });
+
+  it("defaults isVideo to false and reads it when set", async () => {
+    const def = await listUpcomingEvents(
+      makeClient({ data: [baseRow], error: null }),
+    );
+    expect(def[0]?.isVideo).toBe(false);
+
+    const video = await listUpcomingEvents(
+      makeClient({ data: [{ ...baseRow, is_video: true }], error: null }),
+    );
+    expect(video[0]?.isVideo).toBe(true);
+  });
+
+  it("requests the is_video column", () => {
+    expect(EVENT_SELECT).toContain("is_video");
   });
 
   it("normalizes array-form relations and missing names", async () => {
@@ -206,6 +223,7 @@ describe("groupEventsByWeek", () => {
     imageStatus: "ok",
     ticketsRequired: false,
     editorsPick: false,
+    isVideo: false,
     externalLink: null,
     organizerName: null,
     locationName: null,

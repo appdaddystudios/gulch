@@ -36,12 +36,29 @@ describe("fetchInstagramCover", () => {
       status: "ok",
       bytes,
       contentType: "image/jpeg",
-      checksum: createHash("sha256").update(bytes).digest("hex")
+      checksum: createHash("sha256").update(bytes).digest("hex"),
+      isVideo: false
     });
     expect(calls).toEqual([
       { url: "https://www.instagram.com/p/ABC123/", ua: CRAWLER_UA },
       { url: "https://cdninstagram.com/image.jpg", ua: CRAWLER_UA }
     ]);
+  });
+
+  it("flags video posts via the canonical og:url", async () => {
+    const bytes = new Uint8Array([9, 9]);
+    const fetch: FetchLike = async (input) =>
+      String(input).includes("cdninstagram")
+        ? imageResponse(bytes)
+        : htmlResponse(
+            '<meta property="og:image" content="https://cdninstagram.com/thumb.jpg" />' +
+              '<meta property="og:url" content="https://www.instagram.com/gvgatl/reel/DZrwvUGuaV0/" />'
+          );
+
+    await expect(fetchInstagramCover("https://www.instagram.com/p/DZrwvUGuaV0/", { fetch })).resolves.toMatchObject({
+      status: "ok",
+      isVideo: true
+    });
   });
 
   it("returns unavailable for non-Instagram URLs and posts without og:image", async () => {
