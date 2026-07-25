@@ -60,55 +60,64 @@ const hasCoordinates = (
   location.longitude !== null;
 
 type ListMapVenuesOptions = {
-  readonly limit?: number;
   readonly nowIso?: string;
 };
 
-const DEFAULT_EVENT_LIMIT = 250;
+// Page size for the range() loop below; also bounded by Supabase's max_rows.
+export const MAP_EVENT_PAGE_SIZE = 250;
 
 // Upcoming events grouped into one pin per venue. Events whose venue is
 // missing or not yet geocoded are skipped — they cannot be placed on the map.
-// Venue order follows each venue's earliest upcoming event.
+// Venue order follows each venue's earliest upcoming event. Pages through the
+// full upcoming set (no silent cap): a fixed limit would drop later events
+// and omit or undercount venues once the calendar outgrows it.
 export const listMapVenues = async (
   client: DbClient,
-  { limit = DEFAULT_EVENT_LIMIT, nowIso }: ListMapVenuesOptions = {},
+  { nowIso }: ListMapVenuesOptions = {},
 ): Promise<readonly MapVenue[]> => {
   const startBoundary = nowIso ?? new Date().toISOString();
-
-  const { data, error } = await client
-    .from("events")
-    .select(MAP_EVENT_SELECT)
-    .gte("start_at", startBoundary)
-    .order("start_at", { ascending: true })
-    .limit(limit);
-
-  if (error) {
-    throw error;
-  }
-
   const venues = new Map<string, MapVenue & { events: EventListItem[] }>();
 
-  for (const row of data ?? []) {
-    const raw = rawMapEventSchema.parse(row);
-    const location = firstLocation(raw.locations);
-    if (!hasCoordinates(location)) {
-      continue;
+  for (let from = 0; ; from += MAP_EVENT_PAGE_SIZE) {
+    const { data, error } = await client
+      .from("events")
+      .select(MAP_EVENT_SELECT)
+      .gte("start_at", startBoundary)
+      .order("start_at", { ascending: true })
+      // Tie-break on the primary key so pagination is stable when many
+      // events share a start time.
+      .order("webflow_item_id", { ascending: true })
+      .range(from, from + MAP_EVENT_PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
     }
 
-    const event = toEventListItem(raw);
-    const existing = venues.get(location.webflow_item_id);
-    if (existing) {
-      existing.events.push(event);
-    } else {
-      venues.set(location.webflow_item_id, {
-        id: location.webflow_item_id,
-        name: location.name,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        events: [event],
-      });
+    const page = data ?? [];
+    for (const row of page) {
+      const raw = rawMapEventSchema.parse(row);
+      const location = firstLocation(raw.locations);
+      if (!hasCoordinates(location)) {
+        continue;
+      }
+
+      const event = toEventListItem(raw);
+      const existing = venues.get(location.webflow_item_id);
+      if (existing) {
+        existing.events.push(event);
+      } else {
+        venues.set(location.webflow_item_id, {
+          id: location.webflow_item_id,
+          name: location.name,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          events: [event],
+        });
+      }
+    }
+
+    if (page.length < MAP_EVENT_PAGE_SIZE) {
+      return [...venues.values()];
     }
   }
-
-  return [...venues.values()];
 };
