@@ -4,7 +4,6 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +26,7 @@ import {
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { getEventDetail, type EventDetail } from "../../lib/events";
+import { openLink } from "../../lib/openLink";
 import { formatEventDateTime } from "../../lib/format";
 import { color, font, radius, space, type as typePreset } from "../../theme";
 
@@ -44,9 +44,7 @@ export default function EventDetailScreen() {
   const { state } = useQuery(client, loader);
 
   const openExternal = (url: string | null) => {
-    if (url) {
-      void Linking.openURL(url);
-    }
+    void openLink(url);
   };
 
   const externalLink =

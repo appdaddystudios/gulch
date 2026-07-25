@@ -9,8 +9,14 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "expo-web-browser"
     ],
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gulch.mobile",
