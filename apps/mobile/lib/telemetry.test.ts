@@ -1,14 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { captureEvent, captureException, initTelemetry, resetTelemetryForTest } from "./telemetry";
+import {
+  captureEvent,
+  captureException,
+  captureScreen,
+  initTelemetry,
+  resetTelemetryForTest
+} from "./telemetry";
 
 const sentryInit = vi.hoisted(() => vi.fn());
 const sentryCaptureException = vi.hoisted(() => vi.fn());
 const posthogCapture = vi.hoisted(() => vi.fn());
+const posthogScreen = vi.hoisted(() => vi.fn());
 const posthogConstructor = vi.hoisted(() =>
   vi.fn(function PostHog() {
     return {
-      capture: posthogCapture
+      capture: posthogCapture,
+      screen: posthogScreen
     };
   })
 );
@@ -32,6 +40,7 @@ describe("telemetry", () => {
     await expect(initTelemetry({})).resolves.toBeUndefined();
     expect(() => captureException(new Error("ignored"))).not.toThrow();
     expect(() => captureEvent("mobile_test")).not.toThrow();
+    expect(() => captureScreen("/calendar")).not.toThrow();
   });
 
   it("is safe to initialize more than once without env", async () => {
@@ -49,10 +58,15 @@ describe("telemetry", () => {
     const error = new Error("reported");
     captureException(error);
     captureEvent("mobile_test", { count: 1, ok: true });
+    captureScreen("/event/evt-1");
 
     expect(sentryInit).toHaveBeenCalledWith({ dsn: "https://public@example.com/1" });
     expect(sentryCaptureException).toHaveBeenCalledWith(error);
-    expect(posthogConstructor).toHaveBeenCalledWith("ph_test", { host: "https://us.i.posthog.com" });
+    expect(posthogConstructor).toHaveBeenCalledWith("ph_test", {
+      host: "https://us.i.posthog.com",
+      captureAppLifecycleEvents: true
+    });
     expect(posthogCapture).toHaveBeenCalledWith("mobile_test", { count: 1, ok: true });
+    expect(posthogScreen).toHaveBeenCalledWith("/event/evt-1");
   });
 });

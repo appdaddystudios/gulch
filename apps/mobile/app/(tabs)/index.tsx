@@ -17,6 +17,7 @@ import { SectionTitle } from "../../components/SectionTitle";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { listUpcomingEvents, type EventListItem } from "../../lib/events";
 import { openLink } from "../../lib/openLink";
+import { captureEvent } from "../../lib/telemetry";
 import {
   listFeaturedOrganizers,
   type FeaturedOrganizer,
@@ -55,7 +56,7 @@ export default function HomeScreen() {
         key={event.id}
         title={event.name}
         subtitle={event.organizerName ?? "Event"}
-        onPress={() => router.push(`/event/${event.id}`)}
+        onPress={() => router.push(`/event/${event.id}?source=home`)}
       />
     ));
 
@@ -87,7 +88,9 @@ export default function HomeScreen() {
                 title={organizer.name}
                 subtitle="Organization"
                 height={96}
-                onPress={() => void openLink(organizer.instagramUrl)}
+                onPress={() =>
+                  void openLink(organizer.instagramUrl, "organizer_instagram")
+                }
               />
             ))}
           </Carousel>
@@ -123,7 +126,10 @@ export default function HomeScreen() {
               label="Take the Survey"
               size="s"
               tone="primary"
-              onPress={() => void openLink(RESEARCH_URL)}
+              onPress={() => {
+                captureEvent("survey_banner_tapped");
+                void openLink(RESEARCH_URL, "research_banner");
+              }}
             />
           }
         />

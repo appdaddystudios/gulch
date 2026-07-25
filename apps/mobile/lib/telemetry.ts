@@ -40,7 +40,8 @@ export const initTelemetry = async (
   if (hasValue(posthogKey)) {
     const posthogModule = await import("posthog-react-native");
     posthog = new posthogModule.PostHog(posthogKey, {
-      host: env.posthogHost
+      host: env.posthogHost,
+      captureAppLifecycleEvents: true
     });
   }
 };
@@ -51,6 +52,12 @@ export const captureException = (error: unknown): void => {
 
 export const captureEvent = (event: string, properties?: TelemetryProperties): void => {
   posthog?.capture(event, properties);
+};
+
+// Screen views use PostHog's dedicated $screen semantics (expo-router has no
+// built-in autocapture hook, so the root layout reports pathname changes).
+export const captureScreen = (name: string): void => {
+  posthog?.screen(name);
 };
 
 export const resetTelemetryForTest = (): void => {

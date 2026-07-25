@@ -30,7 +30,7 @@ export default function LineupScreen() {
       <Header />
       <Body
         state={state}
-        onPressEvent={(event) => router.push(`/event/${event.id}`)}
+        onPressEvent={(event) => router.push(`/event/${event.id}?source=lineup`)}
         isSaved={isSaved}
         onToggleSave={toggle}
       />
