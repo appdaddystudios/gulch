@@ -6,7 +6,7 @@ import {
 import { useFonts } from "expo-font";
 import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -16,7 +16,6 @@ import { captureScreen, initTelemetry } from "../lib/telemetry";
 
 export default function RootLayout() {
   const pathname = usePathname();
-  const [telemetryReady, setTelemetryReady] = useState(false);
   const [fontsLoaded] = useFonts({
     Ubuntu_400Regular,
     Ubuntu_500Medium,
@@ -25,16 +24,14 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    void initTelemetry().then(() => setTelemetryReady(true));
+    void initTelemetry();
   }, []);
 
-  // Screen tracking for expo-router: report every pathname change, gated on
-  // init so the first (cold-start) screen isn't lost.
+  // Screen tracking for expo-router. Captures fired before init settles
+  // (including this cold-start screen) are buffered inside telemetry.
   useEffect(() => {
-    if (telemetryReady) {
-      captureScreen(pathname);
-    }
-  }, [telemetryReady, pathname]);
+    captureScreen(pathname);
+  }, [pathname]);
 
   return (
     <SafeAreaProvider>

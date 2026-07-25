@@ -48,6 +48,31 @@ describe("telemetry", () => {
     await expect(initTelemetry({})).resolves.toBeUndefined();
   });
 
+  it("buffers captures made before init and flushes them once PostHog is ready", async () => {
+    captureEvent("map_opened");
+    captureScreen("/map");
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+
+    await initTelemetry({
+      posthogKey: "ph_test",
+      posthogHost: "https://us.i.posthog.com"
+    });
+
+    expect(posthogCapture).toHaveBeenCalledWith("map_opened", undefined);
+    expect(posthogScreen).toHaveBeenCalledWith("/map");
+  });
+
+  it("discards buffered captures when init settles without a PostHog key", async () => {
+    captureEvent("map_opened");
+
+    await initTelemetry({});
+    captureEvent("newsletter_viewed");
+
+    expect(posthogCapture).not.toHaveBeenCalled();
+    expect(posthogScreen).not.toHaveBeenCalled();
+  });
+
   it("initializes and captures when telemetry env is present", async () => {
     await initTelemetry({
       sentryDsn: "https://public@example.com/1",
