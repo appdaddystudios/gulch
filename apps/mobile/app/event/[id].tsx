@@ -258,10 +258,15 @@ const styles = StyleSheet.create({
   },
   hero: {
     aspectRatio: 1,
+    // Letterbox bars behind `contain` match the screen background.
+    backgroundColor: color.oreo,
     width: "100%",
   },
   heroImage: {
     height: "100%",
+    // Show the whole poster — Instagram art is often portrait and `cover`
+    // crops the edges off.
+    resizeMode: "contain",
     width: "100%",
   },
   heroPlaceholder: {

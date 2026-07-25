@@ -155,15 +155,32 @@ result_count), `map_opened`, `map_pin_tapped`, `newsletter_viewed`, `calendar_vi
 
 ## Phase 5 — Build & TestFlight release
 
+**T5.0 Pre-build polish (added 2026-07-25, own PR before the build):**
+- Splash screen: user-set `app.json#splash` values don't show because the splash is baked
+  into the native binary — invisible until a new build. Migrate to the `expo-splash-screen`
+  config plugin (SDK 52+ canonical path) with brand image + `#3F220F` background; verify in
+  the T5.2 device build.
+- EventCard time pill: text sits low in the 20px pill (same iOS lineHeight behavior as the
+  T1.4 SearchBar fix) — center it.
+- Event details hero: show the FULL image (`contain` letterboxed on brand background) instead
+  of `cover` cropping the edges.
+- Home promo banners (Hotspots Map, Participate in Research): entire card tappable, not just
+  the small button.
+- OPTIONAL (revisit if complicated): Instagram video posts currently rehost the thumbnail,
+  which bakes in IG's play button. Real playback needs pipeline work (scrape `og:video` →
+  `events.video_url` + storage rehost) + `expo-video` player on the details hero. Deferred —
+  not part of this batch unless requested again.
+
 **T5.1** Version/build-number bump; confirm EAS envs contain: 3 Supabase vars, POSTHOG pair,
-`EXPO_PUBLIC_MAPBOX_TOKEN`, `SENTRY_DISABLE_AUTO_UPLOAD=true` (+ Mapbox download token if T3.0
-requires).
-**T5.2** `eas build -p ios --profile preview` → on-device pass: icon (corners/no artifacts),
-in-app browser links, newsletter embed, search bar, event images (post-drain), map pins,
-PostHog live events.
-**T5.3** Production build + `eas submit` (wire `ascAppId` into `eas.json` while at it — still
-pending from the June TestFlight session; first confirm whether that upload ever landed in
-App Store Connect).
+`EXPO_PUBLIC_MAPBOX_TOKEN`, `SENTRY_DISABLE_AUTO_UPLOAD=true` (no Mapbox download token
+needed — T3.0 confirmed current SDKs are public).
+**T5.2** `eas build -p ios --profile preview` → **install on the user's PHYSICAL device
+BEFORE any TestFlight submit (user requirement 2026-07-25)**: icon + splash, in-app browser
+links, newsletter embed, search bar, event images (post-drain), time-pill centering, full
+hero image, banner tap targets, map pins, PostHog live events.
+**T5.3** Only after the physical-device pass: production build + `eas submit` (wire
+`ascAppId` into `eas.json` while at it — still pending from the June TestFlight session;
+first confirm whether that upload ever landed in App Store Connect).
 ✅ Release gate: TestFlight install works end-to-end on a physical device.
 
 ---

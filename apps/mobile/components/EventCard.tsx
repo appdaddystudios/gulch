@@ -164,11 +164,14 @@ const styles = StyleSheet.create({
     height: 20,
     justifyContent: "center",
     paddingHorizontal: space.md,
-    paddingVertical: space.xs,
   },
   timeLabel: {
     ...typePreset.label10Medium,
     color: color.khakis,
+    // Centered in the fixed-height pill: the preset's lineHeight bottom-aligns
+    // text on iOS (same behavior as the SearchBar fix).
+    includeFontPadding: false,
+    lineHeight: undefined,
   },
   nameBlock: {
     alignItems: "flex-start",
