@@ -1,6 +1,6 @@
 import Mapbox from "@rnmapbox/maps";
 import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -19,6 +19,7 @@ import { MapIcon } from "../../components/icons";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { listMapVenues, type MapVenue } from "../../lib/mapEvents";
+import { captureEvent } from "../../lib/telemetry";
 import { color, radius, space, type as typePreset } from "../../theme";
 
 // Expo inlines only static dot-notation env reads.
@@ -40,6 +41,10 @@ export default function MapScreen() {
     [],
   );
   const { state, reload } = useQuery(client, loader);
+
+  useEffect(() => {
+    captureEvent("map_opened");
+  }, []);
 
   return (
     <View style={styles.screen}>
@@ -99,7 +104,12 @@ function Content({
           title="Couldn't load the map"
           subtitle={state.message}
           action={
-            <Button label="Try Again" size="s" tone="primary" onPress={onRetry} />
+            <Button
+              label="Try Again"
+              size="s"
+              tone="primary"
+              onPress={onRetry}
+            />
           }
         />
       </Centered>
@@ -133,11 +143,18 @@ function Content({
             <VenuePin
               venue={venue}
               selected={venue.id === selectedVenueId}
-              onPress={() =>
+              onPress={() => {
+                if (selectedVenueId !== venue.id) {
+                  captureEvent("map_pin_tapped", {
+                    venue_id: venue.id,
+                    venue_name: venue.name,
+                    event_count: venue.events.length,
+                  });
+                }
                 setSelectedVenueId((current) =>
                   current === venue.id ? null : venue.id,
-                )
-              }
+                );
+              }}
             />
           </Mapbox.MarkerView>
         ))}
@@ -158,7 +175,7 @@ function Content({
           venue={selectedVenue}
           isSaved={isSaved}
           onToggleSave={toggle}
-          onOpenEvent={(id) => router.push(`/event/${id}`)}
+          onOpenEvent={(id) => router.push(`/event/${id}?source=map`)}
         />
       ) : null}
     </View>

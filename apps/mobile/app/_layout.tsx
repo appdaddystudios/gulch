@@ -4,7 +4,7 @@ import {
   Ubuntu_700Bold,
 } from "@expo-google-fonts/ubuntu";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { View } from "react-native";
@@ -12,9 +12,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { SavedEventsProvider } from "../hooks/useSavedEvents";
 import { color } from "../theme";
-import { initTelemetry } from "../lib/telemetry";
+import { captureScreen, initTelemetry } from "../lib/telemetry";
 
 export default function RootLayout() {
+  const pathname = usePathname();
   const [fontsLoaded] = useFonts({
     Ubuntu_400Regular,
     Ubuntu_500Medium,
@@ -25,6 +26,12 @@ export default function RootLayout() {
   useEffect(() => {
     void initTelemetry();
   }, []);
+
+  // Screen tracking for expo-router. Captures fired before init settles
+  // (including this cold-start screen) are buffered inside telemetry.
+  useEffect(() => {
+    captureScreen(pathname);
+  }, [pathname]);
 
   return (
     <SafeAreaProvider>

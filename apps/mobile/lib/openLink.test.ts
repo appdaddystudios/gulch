@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const openBrowserAsync = vi.fn();
 const openURL = vi.fn();
 const captureException = vi.fn();
+const captureEvent = vi.fn();
 
 vi.mock("expo-web-browser", () => ({ openBrowserAsync: (url: string) => openBrowserAsync(url) }));
 vi.mock("react-native", () => ({ Linking: { openURL: (url: string) => openURL(url) } }));
-vi.mock("./telemetry", () => ({ captureException: (error: unknown) => captureException(error) }));
+vi.mock("./telemetry", () => ({
+  captureException: (error: unknown) => captureException(error),
+  captureEvent: (event: string, properties?: unknown) => captureEvent(event, properties),
+}));
 
 import { isOpenableUrl, openLink } from "./openLink";
 
@@ -14,6 +18,7 @@ beforeEach(() => {
   openBrowserAsync.mockReset().mockResolvedValue({ type: "dismiss" });
   openURL.mockReset().mockResolvedValue(true);
   captureException.mockReset();
+  captureEvent.mockReset();
 });
 
 describe("isOpenableUrl", () => {
@@ -37,6 +42,24 @@ describe("openLink", () => {
     expect(openURL).not.toHaveBeenCalled();
   });
 
+  it("captures link_opened with the domain and context", async () => {
+    await openLink("https://instagram.com/p/abc/", "organizer_instagram");
+
+    expect(captureEvent).toHaveBeenCalledWith("link_opened", {
+      domain: "instagram.com",
+      context: "organizer_instagram",
+    });
+  });
+
+  it("captures link_opened with a null context when none is given", async () => {
+    await openLink("https://example.com/page");
+
+    expect(captureEvent).toHaveBeenCalledWith("link_opened", {
+      domain: "example.com",
+      context: null,
+    });
+  });
+
   it("does nothing for null, empty, or non-http(s) URLs", async () => {
     await openLink(null);
     await openLink(undefined);
@@ -45,6 +68,7 @@ describe("openLink", () => {
 
     expect(openBrowserAsync).not.toHaveBeenCalled();
     expect(openURL).not.toHaveBeenCalled();
+    expect(captureEvent).not.toHaveBeenCalled();
   });
 
   it("falls back to the system browser when the in-app browser fails", async () => {

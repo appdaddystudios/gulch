@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -28,9 +28,13 @@ import {
   type EventWeekSection,
 } from "../../lib/events";
 import { dayKey } from "../../lib/format";
+import { captureEvent } from "../../lib/telemetry";
 import { color, font, radius, space, type as typePreset } from "../../theme";
 
 type ViewMode = "list" | "calendar";
+
+// Debounce so search_performed reflects settled queries, not every keystroke.
+const SEARCH_CAPTURE_DELAY_MS = 1000;
 
 const loadEvents = (client: Parameters<typeof listUpcomingEvents>[0]) =>
   listUpcomingEvents(client, { limit: 100 });
@@ -76,7 +80,29 @@ export default function CalendarScreen() {
     [filtered, selectedKey],
   );
 
-  const openEvent = (event: EventListItem) => router.push(`/event/${event.id}`);
+  useEffect(() => {
+    const query = search.trim();
+    if (!query) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      captureEvent("search_performed", {
+        query_length: query.length,
+        result_count: filtered.length,
+      });
+    }, SEARCH_CAPTURE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [search, filtered]);
+
+  const switchMode = (value: ViewMode) => {
+    if (value !== mode) {
+      captureEvent("calendar_view_toggled", { mode: value });
+    }
+    setMode(value);
+  };
+
+  const openEvent = (event: EventListItem) =>
+    router.push(`/event/${event.id}?source=calendar`);
   const renderCard = (item: EventListItem) => (
     <EventCard
       event={item}
@@ -91,7 +117,7 @@ export default function CalendarScreen() {
       <Header />
       <View style={styles.controls}>
         <SearchBar value={search} onChangeText={setSearch} />
-        <Toggle mode={mode} onChange={setMode} />
+        <Toggle mode={mode} onChange={switchMode} />
       </View>
 
       {state.status !== "ready" ? (

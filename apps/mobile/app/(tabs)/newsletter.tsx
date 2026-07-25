@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { WebView } from "react-native-webview";
 
@@ -6,6 +6,7 @@ import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { Header } from "../../components/Header";
 import { NewsletterIcon } from "../../components/icons";
+import { captureEvent } from "../../lib/telemetry";
 import { color, space } from "../../theme";
 
 const NEWSLETTER_EMBED_URL = "https://gulchmag.substack.com/embed";
@@ -14,6 +15,10 @@ export default function NewsletterScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasFailed, setHasFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    captureEvent("newsletter_viewed");
+  }, []);
 
   const retry = () => {
     setHasFailed(false);

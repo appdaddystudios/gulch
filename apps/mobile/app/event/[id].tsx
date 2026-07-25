@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -27,13 +27,18 @@ import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { getEventDetail, type EventDetail } from "../../lib/events";
 import { openLink } from "../../lib/openLink";
+import { captureEvent } from "../../lib/telemetry";
 import { formatEventDateTime } from "../../lib/format";
 import { color, font, radius, space, type as typePreset } from "../../theme";
 
 export default function EventDetailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    source?: string | string[];
+  }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const source = Array.isArray(params.source) ? params.source[0] : params.source;
 
   const client = useDbClient();
   const loader = useCallback(
@@ -43,8 +48,19 @@ export default function EventDetailScreen() {
   );
   const { state } = useQuery(client, loader);
 
+  // One event_viewed per load — `state` settles once per event id.
+  useEffect(() => {
+    if (state.status === "ready" && state.data) {
+      captureEvent("event_viewed", {
+        event_id: state.data.id,
+        event_name: state.data.name,
+        source: source ?? null,
+      });
+    }
+  }, [state, source]);
+
   const openExternal = (url: string | null) => {
-    void openLink(url);
+    void openLink(url, "event_share");
   };
 
   const externalLink =

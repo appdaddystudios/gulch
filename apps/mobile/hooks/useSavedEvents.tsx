@@ -15,6 +15,7 @@ import {
   serializeSavedIds,
   toggleSavedId,
 } from "../lib/savedEvents";
+import { captureEvent } from "../lib/telemetry";
 
 type SavedEventsValue = {
   readonly savedIds: ReadonlySet<string>;
@@ -47,6 +48,9 @@ export function SavedEventsProvider({ children }: { readonly children: ReactNode
   const toggle = useCallback((id: string) => {
     setIds((prev) => {
       const next = toggleSavedId(prev, id);
+      captureEvent(next.includes(id) ? "event_saved" : "event_unsaved", {
+        event_id: id,
+      });
       void AsyncStorage.setItem(SAVED_EVENTS_KEY, serializeSavedIds(next)).catch(
         () => {
           // Best-effort persistence; in-memory state still updates.
