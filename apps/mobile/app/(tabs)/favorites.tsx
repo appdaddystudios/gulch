@@ -29,7 +29,7 @@ type FavoritesSection = {
 export default function FavoritesScreen() {
   const router = useRouter();
   const client = useDbClient();
-  const { savedIds, isSaved, toggle, toastVisible, dismissToast } =
+  const { savedIds, isSaved, toggle, toastVisible, toastNonce, dismissToast } =
     useSaveToast();
 
   const ids = useMemo(() => [...savedIds].sort(), [savedIds]);
@@ -52,6 +52,7 @@ export default function FavoritesScreen() {
         onToggleSave={toggle}
       />
       <Toast
+        key={toastNonce}
         message="Added to your favorites"
         visible={toastVisible}
         onDismiss={dismissToast}

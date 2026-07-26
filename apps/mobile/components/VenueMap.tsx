@@ -68,7 +68,8 @@ function Content({
   readonly eventSource: string;
 }) {
   const router = useRouter();
-  const { isSaved, toggle, toastVisible, dismissToast } = useSaveToast();
+  const { isSaved, toggle, toastVisible, toastNonce, dismissToast } =
+    useSaveToast();
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
 
   if (!MAPBOX_TOKEN) {
@@ -187,6 +188,7 @@ function Content({
       ) : null}
 
       <Toast
+        key={toastNonce}
         message="Added to your favorites"
         visible={toastVisible}
         onDismiss={dismissToast}

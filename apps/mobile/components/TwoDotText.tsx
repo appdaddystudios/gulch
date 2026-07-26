@@ -31,12 +31,21 @@ export function TwoDotText({ text, style }: TwoDotTextProps) {
     const first = lines[0]?.text ?? "";
     if (lines.length > 1 && first.length > TRIM_CHARS) {
       setDisplay(`${first.slice(0, -TRIM_CHARS).trimEnd()}${ELLIPSIS}`);
+    } else if (lines.length <= 1) {
+      // A reflow (rotation, font-scale change) can widen the line back to
+      // fitting — un-truncate rather than sticking with the sliced value.
+      setDisplay(text);
     }
   };
 
   return (
     <>
-      <Text numberOfLines={1} ellipsizeMode="clip" style={style}>
+      <Text
+        accessibilityLabel={text}
+        numberOfLines={1}
+        ellipsizeMode="clip"
+        style={style}
+      >
         {display}
       </Text>
       <Text

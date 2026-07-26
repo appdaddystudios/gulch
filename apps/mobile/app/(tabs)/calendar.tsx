@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Animated,
   Easing,
@@ -95,7 +96,8 @@ export default function CalendarScreen() {
   const client = useDbClient();
   const loader = useCallback(loadEvents, []);
   const { state } = useQuery(client, loader);
-  const { isSaved, toggle, toastVisible, dismissToast } = useSaveToast();
+  const { isSaved, toggle, toastVisible, toastNonce, dismissToast } =
+    useSaveToast();
 
   const todayKey = useMemo(() => dayKey(new Date().toISOString()), []);
   const [mode, setMode] = useState<ViewMode>("list");
@@ -119,9 +121,33 @@ export default function CalendarScreen() {
     extrapolate: "clamp",
   });
 
-  // V3 punch list: soften the Month/Week/List swap with a short fade-in.
+  // V3 punch list: soften the Month/Week/List swap with a short fade-in —
+  // skipped entirely when the system Reduce Motion setting is on.
   const modeFade = useRef(new Animated.Value(1)).current;
+  const reduceMotion = useRef(false);
   useEffect(() => {
+    let active = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (active) {
+        reduceMotion.current = enabled;
+      }
+    });
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      (enabled) => {
+        reduceMotion.current = enabled;
+      },
+    );
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (reduceMotion.current) {
+      modeFade.setValue(1);
+      return;
+    }
     modeFade.setValue(0);
     Animated.timing(modeFade, {
       duration: 220,
@@ -273,6 +299,7 @@ export default function CalendarScreen() {
         )}
         </Animated.View>
         <Toast
+          key={toastNonce}
           message="Added to your favorites"
           visible={toastVisible}
           onDismiss={dismissToast}
@@ -368,6 +395,7 @@ export default function CalendarScreen() {
       )}
       </Animated.View>
       <Toast
+        key={toastNonce}
         message="Added to your favorites"
         visible={toastVisible}
         onDismiss={dismissToast}
