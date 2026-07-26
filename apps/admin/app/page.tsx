@@ -1,3 +1,8 @@
+import { BannerAdCard } from "@/components/BannerAdCard";
+import { FeaturedOrganizersCard } from "@/components/FeaturedOrganizersCard";
+import { ResearchCard } from "@/components/ResearchCard";
+import { getFeaturedState, type FeaturedState } from "@/lib/featured";
+import { getHomepageConfig, type HomepageConfig } from "@/lib/homeContent";
 import { getCounts } from "@/lib/stats";
 import { createServerSupabase } from "@/lib/supabase";
 import { initializeTelemetry, captureException } from "@/lib/telemetry";
@@ -12,6 +17,8 @@ type DashboardState =
         readonly events: number;
         readonly shows: number;
       };
+      readonly config: HomepageConfig;
+      readonly featured: FeaturedState;
     }
   | {
       readonly connected: false;
@@ -31,13 +38,17 @@ const loadDashboardState = async (): Promise<DashboardState> => {
   }
 
   try {
-    const counts = await getCounts(client);
-    return { connected: true, counts };
+    const [counts, config, featured] = await Promise.all([
+      getCounts(client),
+      getHomepageConfig(client),
+      getFeaturedState(client)
+    ]);
+    return { connected: true, counts, config, featured };
   } catch (error) {
     captureException(error);
     return {
       connected: false,
-      reason: error instanceof Error ? error.message : "Supabase count query failed."
+      reason: error instanceof Error ? error.message : "Supabase query failed."
     };
   }
 };
@@ -69,24 +80,36 @@ export default async function AdminPage() {
             </span>
           </div>
           <p className="max-w-2xl text-sm leading-6 text-khakis">
-            Live counts from the public Gulch data set.
+            Edit the app homepage content — changes go live the next time the app loads.
           </p>
         </header>
 
         {state.connected ? (
-          <div className="grid gap-5 sm:grid-cols-3">
-            {countCards.map((card) => (
-              <div
-                key={card.key}
-                className="rounded-card border-2 border-oreo bg-brown-300 p-5 shadow-hard-lg"
-              >
-                <p className="text-sm font-medium text-white">{card.label}</p>
-                <p className="mt-3 text-4xl font-bold tabular-nums text-white">
-                  {state.counts[card.key].toLocaleString()}
-                </p>
-              </div>
-            ))}
-          </div>
+          <>
+            <div className="grid gap-5 sm:grid-cols-3">
+              {countCards.map((card) => (
+                <div
+                  key={card.key}
+                  className="rounded-card border-2 border-oreo bg-brown-300 p-5 shadow-hard-lg"
+                >
+                  <p className="text-sm font-medium text-white">{card.label}</p>
+                  <p className="mt-3 text-4xl font-bold tabular-nums text-white">
+                    {state.counts[card.key].toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid items-start gap-6 lg:grid-cols-2">
+              <ResearchCard label={state.config.researchLabel} url={state.config.researchUrl} />
+              <BannerAdCard config={state.config} />
+            </div>
+
+            <FeaturedOrganizersCard
+              featuredIds={state.featured.featuredIds}
+              organizers={state.featured.organizers}
+            />
+          </>
         ) : (
           <div className="rounded-card border-2 border-oreo bg-brown-400 p-5 shadow-hard-lg">
             <p className="text-sm font-bold text-white">Supabase is unreachable</p>
