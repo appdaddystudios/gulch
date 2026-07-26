@@ -161,8 +161,10 @@ function Content({
 
   const event = state.data;
   const externalHref = event.externalLink;
+  // Distinct context from the header share icon so link_opened attributes the
+  // "More Information" surface correctly.
   const openExternal = (url: string) => {
-    void openLink(url, "event_share");
+    void openLink(url, "event_more_information");
   };
   // Any stored image renders — a transient pipeline status ("pending"/"failed"
   // after a re-mark) must not hide a previously good rehosted image.
