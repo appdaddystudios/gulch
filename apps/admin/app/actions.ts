@@ -11,7 +11,7 @@ import {
   removeFromList,
   setFeaturedOrganizers
 } from "@/lib/featured";
-import { updateHomepageConfig, type HomepageConfigUpdate } from "@/lib/homeContent";
+import { getHomepageConfig, updateHomepageConfig, type HomepageConfigUpdate } from "@/lib/homeContent";
 import { createServiceSupabase } from "@/lib/supabase";
 
 export type ActionResult = {
@@ -120,6 +120,34 @@ const uploadBannerImage = async (client: DbClient, file: File): Promise<string> 
   return client.storage.from("banner-ads").getPublicUrl(path).data.publicUrl;
 };
 
+const BANNER_BUCKET_MARKER = "/object/public/banner-ads/";
+
+const bannerStoragePath = (publicUrl: string): string | null => {
+  const index = publicUrl.indexOf(BANNER_BUCKET_MARKER);
+  return index === -1 ? null : publicUrl.slice(index + BANNER_BUCKET_MARKER.length);
+};
+
+// Best-effort removal of a superseded banner object — replaced/removed
+// creatives would otherwise accumulate in the public bucket forever. Runs
+// after the config update succeeds and never fails the save.
+const removeSupersededBannerImage = async (
+  client: DbClient,
+  previousUrl: string | null,
+  nextUrl: string | null
+): Promise<void> => {
+  if (!previousUrl || previousUrl === nextUrl) {
+    return;
+  }
+  const path = bannerStoragePath(previousUrl);
+  if (!path) {
+    return;
+  }
+  const removed = await client.storage.from("banner-ads").remove([path]);
+  if (removed.error) {
+    console.error("Failed to remove superseded banner image:", removed.error.message);
+  }
+};
+
 export const saveBanner = async (_prev: ActionResult, formData: FormData): Promise<ActionResult> => {
   try {
     const parsed = bannerSchema.safeParse({
@@ -133,6 +161,7 @@ export const saveBanner = async (_prev: ActionResult, formData: FormData): Promi
     }
 
     const client = requireServiceClient();
+    const previous = await getHomepageConfig(client);
 
     // A new upload wins over the remove checkbox; neither leaves the image as is.
     const image = formData.get("image");
@@ -150,6 +179,12 @@ export const saveBanner = async (_prev: ActionResult, formData: FormData): Promi
       banner_link_url: parsed.data.linkUrl,
       ...imageUpdate
     });
+
+    const nextImageUrl =
+      "banner_image_url" in imageUpdate
+        ? (imageUpdate.banner_image_url ?? null)
+        : previous.bannerImageUrl;
+    await removeSupersededBannerImage(client, previous.bannerImageUrl, nextImageUrl);
     revalidatePath("/");
     return OK;
   } catch (error) {

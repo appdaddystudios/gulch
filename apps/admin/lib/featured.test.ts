@@ -67,7 +67,7 @@ const makeClient = (results: Record<string, QueryResult>, calls: TableCall[] = [
   return {
     from: (table: string) => {
       const builder: Record<string, unknown> = {};
-      for (const method of ["select", "order", "delete", "gte", "insert"]) {
+      for (const method of ["select", "order", "delete", "gte", "upsert", "not"]) {
         builder[method] = (...args: unknown[]) => {
           calls.push({ table, method, args });
           return builder;
@@ -131,7 +131,7 @@ describe("getFeaturedState", () => {
 });
 
 describe("setFeaturedOrganizers", () => {
-  it("rewrites the curation with 0-based positions", async () => {
+  it("upserts the new order first, then prunes stale rows", async () => {
     const calls: TableCall[] = [];
 
     await expect(
@@ -142,22 +142,27 @@ describe("setFeaturedOrganizers", () => {
     ).resolves.toBeUndefined();
 
     expect(calls).toEqual([
-      { table: "featured_organizers", method: "delete", args: [] },
-      { table: "featured_organizers", method: "gte", args: ["position", -1] },
       {
         table: "featured_organizers",
-        method: "insert",
+        method: "upsert",
         args: [
           [
             { organizer_id: "org-2", position: 0 },
             { organizer_id: "org-1", position: 1 }
-          ]
+          ],
+          { onConflict: "organizer_id" }
         ]
+      },
+      { table: "featured_organizers", method: "delete", args: [] },
+      {
+        table: "featured_organizers",
+        method: "not",
+        args: ["organizer_id", "in", '("org-2","org-1")']
       }
     ]);
   });
 
-  it("only deletes when the new list is empty", async () => {
+  it("only prunes when the new list is empty", async () => {
     const calls: TableCall[] = [];
 
     await expect(

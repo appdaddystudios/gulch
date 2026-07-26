@@ -77,32 +77,36 @@ export const getFeaturedState = async (client: FeaturedClient): Promise<Featured
 
 type WriteResult = { readonly error: { readonly message: string } | null };
 
-// Rewrites the curation to exactly orderedIds (positions 0..n-1). Delete-then-
-// insert keeps it simple: the table is tiny, admin-only, and the mobile app
-// degrades gracefully to its empty state during the brief write window.
+// Rewrites the curation to exactly orderedIds (positions 0..n-1). Upsert first,
+// prune after: a failed write (bad id, transient error) never erases the
+// existing curation — the single upsert statement is atomic, and stale rows
+// are only removed once the new order is safely in place.
 export const setFeaturedOrganizers = async (
   client: FeaturedClient,
   orderedIds: readonly string[]
 ): Promise<void> => {
+  if (orderedIds.length > 0) {
+    const rows = orderedIds.map((organizer_id, position) => ({ organizer_id, position }));
+    const upserted = await (client
+      .from("featured_organizers")
+      .upsert(rows, { onConflict: "organizer_id" }) as unknown as PromiseLike<WriteResult>);
+
+    if (upserted.error) {
+      throw new Error(`Failed to update featured organizers: ${upserted.error.message}`);
+    }
+  }
+
   // PostgREST requires a filter on delete; position >= -1 matches every row.
-  const deleted = await (client
-    .from("featured_organizers")
-    .delete()
-    .gte("position", -1) as unknown as PromiseLike<WriteResult>);
+  const prune = client.from("featured_organizers").delete();
+  const pruned = await ((orderedIds.length === 0
+    ? prune.gte("position", -1)
+    : prune.not(
+        "organizer_id",
+        "in",
+        `(${orderedIds.map((id) => `"${id}"`).join(",")})`
+      )) as unknown as PromiseLike<WriteResult>);
 
-  if (deleted.error) {
-    throw new Error(`Failed to update featured organizers: ${deleted.error.message}`);
-  }
-  if (orderedIds.length === 0) {
-    return;
-  }
-
-  const rows = orderedIds.map((organizer_id, position) => ({ organizer_id, position }));
-  const inserted = await (client
-    .from("featured_organizers")
-    .insert(rows) as unknown as PromiseLike<WriteResult>);
-
-  if (inserted.error) {
-    throw new Error(`Failed to update featured organizers: ${inserted.error.message}`);
+  if (pruned.error) {
+    throw new Error(`Failed to update featured organizers: ${pruned.error.message}`);
   }
 };
