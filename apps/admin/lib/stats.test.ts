@@ -21,21 +21,26 @@ describe("getCounts", () => {
         createCountClient({
           locations: 12,
           events: 34,
-          shows: 5
+          shows: 5,
+          organizers: 8
         })
       )
     ).resolves.toEqual({
       locations: 12,
       events: 34,
-      shows: 5
+      shows: 5,
+      organizers: 8
     });
   });
 
   it("normalizes null counts to zero", async () => {
-    await expect(getCounts(createCountClient({ locations: null, events: 1, shows: 2 }))).resolves.toEqual({
+    await expect(
+      getCounts(createCountClient({ locations: null, events: 1, shows: 2, organizers: 3 }))
+    ).resolves.toEqual({
       locations: 0,
       events: 1,
-      shows: 2
+      shows: 2,
+      organizers: 3
     });
   });
 

@@ -4,6 +4,7 @@ export type AdminCounts = {
   readonly locations: number;
   readonly events: number;
   readonly shows: number;
+  readonly organizers: number;
 };
 
 type CountTable = keyof AdminCounts;
@@ -28,11 +29,12 @@ const countTable = async (client: CountClient, table: CountTable): Promise<numbe
 };
 
 export const getCounts = async (client: CountClient): Promise<AdminCounts> => {
-  const [locations, events, shows] = await Promise.all([
+  const [locations, events, shows, organizers] = await Promise.all([
     countTable(client, "locations"),
     countTable(client, "events"),
-    countTable(client, "shows")
+    countTable(client, "shows"),
+    countTable(client, "organizers")
   ]);
 
-  return { locations, events, shows };
+  return { locations, events, shows, organizers };
 };
