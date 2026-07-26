@@ -1,8 +1,10 @@
 import { BannerAdCard } from "@/components/BannerAdCard";
 import { FeaturedOrganizersCard } from "@/components/FeaturedOrganizersCard";
 import { ResearchCard } from "@/components/ResearchCard";
+import { SponsoredEventsCard } from "@/components/SponsoredEventsCard";
 import { getFeaturedState, type FeaturedState } from "@/lib/featured";
 import { getHomepageConfig, type HomepageConfig } from "@/lib/homeContent";
+import { getSponsorableEvents, type SponsorableEvent } from "@/lib/sponsoredEvents";
 import { getCounts } from "@/lib/stats";
 import { createServerSupabase } from "@/lib/supabase";
 import { initializeTelemetry, captureException } from "@/lib/telemetry";
@@ -19,6 +21,7 @@ type DashboardState =
       };
       readonly config: HomepageConfig;
       readonly featured: FeaturedState;
+      readonly sponsorable: readonly SponsorableEvent[];
     }
   | {
       readonly connected: false;
@@ -38,12 +41,13 @@ const loadDashboardState = async (): Promise<DashboardState> => {
   }
 
   try {
-    const [counts, config, featured] = await Promise.all([
+    const [counts, config, featured, sponsorable] = await Promise.all([
       getCounts(client),
       getHomepageConfig(client),
-      getFeaturedState(client)
+      getFeaturedState(client),
+      getSponsorableEvents(client)
     ]);
-    return { connected: true, counts, config, featured };
+    return { connected: true, counts, config, featured, sponsorable };
   } catch (error) {
     captureException(error);
     return {
@@ -109,6 +113,8 @@ export default async function AdminPage() {
               featuredIds={state.featured.featuredIds}
               organizers={state.featured.organizers}
             />
+
+            <SponsoredEventsCard events={state.sponsorable} />
           </>
         ) : (
           <div className="rounded-card border-2 border-oreo bg-brown-400 p-5 shadow-hard-lg">

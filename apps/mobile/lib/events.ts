@@ -17,6 +17,9 @@ export type EventListItem = {
   readonly imageStatus: EventImageStatus;
   readonly ticketsRequired: boolean;
   readonly editorsPick: boolean;
+  readonly sponsored: boolean;
+  // Aggregate anonymous saves (event_save_counts); 0 when the row is absent.
+  readonly saveCount: number;
   // Linked Instagram post is a video (reel) — the details hero offers playback.
   readonly isVideo: boolean;
   readonly externalLink: string | null;
@@ -27,8 +30,10 @@ export type EventListItem = {
 export type EventDetail = EventListItem;
 
 // PostgREST select used by every events query in the app.
-export const EVENT_SELECT =
-  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, is_video, external_link, locations(name), event_organizers(organizers(name))";
+const EVENT_FIELDS =
+  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, sponsored, is_video, external_link, locations(name), event_organizers(organizers(name))";
+
+export const EVENT_SELECT = `${EVENT_FIELDS}, event_save_counts(saves)`;
 
 const namedSchema = z.object({ name: z.string() });
 
@@ -50,9 +55,18 @@ export const rawEventSchema = z.object({
   tickets_required: z.boolean(),
   // Older rows (pre-migration) may omit the column; default to false.
   editors_pick: z.boolean().optional().default(false),
+  sponsored: z.boolean().optional().default(false),
   is_video: z.boolean().optional().default(false),
   external_link: z.string().nullable(),
   locations: embeddedNameSchema,
+  // To-one embed; PostgREST may still return an array shape.
+  event_save_counts: z
+    .union([
+      z.object({ saves: z.number() }),
+      z.array(z.object({ saves: z.number() })),
+    ])
+    .nullable()
+    .optional(),
   event_organizers: z
     .array(z.object({ organizers: embeddedNameSchema }))
     .nullable()
@@ -80,6 +94,14 @@ const organizerName = (rows: RawEvent["event_organizers"]): string | null => {
   return null;
 };
 
+const saveCount = (value: RawEvent["event_save_counts"]): number => {
+  if (!value) {
+    return 0;
+  }
+  const record = Array.isArray(value) ? value[0] : value;
+  return record?.saves ?? 0;
+};
+
 export const toEventListItem = (raw: RawEvent): EventListItem => ({
   id: raw.webflow_item_id,
   name: raw.name,
@@ -90,6 +112,8 @@ export const toEventListItem = (raw: RawEvent): EventListItem => ({
   imageStatus: raw.image_status,
   ticketsRequired: raw.tickets_required,
   editorsPick: raw.editors_pick,
+  sponsored: raw.sponsored,
+  saveCount: saveCount(raw.event_save_counts),
   isVideo: raw.is_video,
   externalLink: raw.external_link,
   organizerName: organizerName(raw.event_organizers),
@@ -120,6 +144,42 @@ export const listUpcomingEvents = async (
   }
 
   return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
+};
+
+const rawTrendingRowSchema = z.object({
+  saves: z.number(),
+  events: rawEventSchema,
+});
+
+type ListTrendingOptions = {
+  readonly limit?: number;
+  readonly nowIso?: string;
+};
+
+// Most-saved upcoming events, ranked server-side across ALL upcoming events
+// (not just the soonest page) via the event_save_counts counter table.
+export const listTrendingEvents = async (
+  client: DbClient,
+  { limit = 6, nowIso }: ListTrendingOptions = {},
+): Promise<readonly EventListItem[]> => {
+  const startBoundary = nowIso ?? new Date().toISOString();
+
+  const { data, error } = await client
+    .from("event_save_counts")
+    .select(`saves, events!inner(${EVENT_FIELDS})`)
+    .gt("saves", 0)
+    .gte("events.start_at", startBoundary)
+    .order("saves", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => {
+    const parsed = rawTrendingRowSchema.parse(row);
+    return { ...toEventListItem(parsed.events), saveCount: parsed.saves };
+  });
 };
 
 // Events matching a set of ids (for the saved/lineup list), soonest first.

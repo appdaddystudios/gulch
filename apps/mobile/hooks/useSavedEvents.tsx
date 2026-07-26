@@ -15,6 +15,8 @@ import {
   serializeSavedIds,
   toggleSavedId,
 } from "../lib/savedEvents";
+import { getDeviceId } from "../lib/deviceId";
+import { createMobileSupabase } from "../lib/supabase";
 import { captureEvent } from "../lib/telemetry";
 
 type SavedEventsValue = {
@@ -48,7 +50,8 @@ export function SavedEventsProvider({ children }: { readonly children: ReactNode
   const toggle = useCallback((id: string) => {
     setIds((prev) => {
       const next = toggleSavedId(prev, id);
-      captureEvent(next.includes(id) ? "event_saved" : "event_unsaved", {
+      const added = next.includes(id);
+      captureEvent(added ? "event_saved" : "event_unsaved", {
         event_id: id,
       });
       void AsyncStorage.setItem(SAVED_EVENTS_KEY, serializeSavedIds(next)).catch(
@@ -56,6 +59,19 @@ export function SavedEventsProvider({ children }: { readonly children: ReactNode
           // Best-effort persistence; in-memory state still updates.
         },
       );
+      // Aggregate save ledger (Trending "X saves") — best-effort, anonymous,
+      // idempotent per device so replays can't inflate counts.
+      void getDeviceId()
+        .then((deviceId) =>
+          createMobileSupabase()?.rpc("set_event_saved", {
+            p_event_id: id,
+            p_device_id: deviceId,
+            p_saved: added,
+          }),
+        )
+        .then(null, () => {
+          // Counter drift on failure is acceptable; saves stay device-local.
+        });
       return next;
     });
   }, []);

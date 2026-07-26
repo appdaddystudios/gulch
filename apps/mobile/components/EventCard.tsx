@@ -23,7 +23,7 @@ export function EventCard({
   event,
   onPress,
   editorsPick,
-  sponsored = false,
+  sponsored,
   saved = false,
   onToggleSave,
 }: EventCardProps) {
@@ -35,8 +35,9 @@ export function EventCard({
     endAt: event.endAt,
     customTimeDescription: event.customTimeDescription,
   });
-  // Editor's Pick is data-driven; an explicit prop still wins when passed.
+  // Editor's Pick / Sponsored are data-driven; explicit props still win.
   const isEditorsPick = editorsPick ?? event.editorsPick;
+  const isSponsored = sponsored ?? event.sponsored;
   // The card's second line is the organizer when present, else the venue —
   // most events carry no explicit organizer, so the location reads instead.
   const metaLabel = event.organizerName ?? event.locationName;
@@ -93,7 +94,7 @@ export function EventCard({
             <MailIcon size={16} color={color.khakis} />
             <Text style={styles.tixLabel}>RSVP Required</Text>
           </View>
-        ) : sponsored ? (
+        ) : isSponsored ? (
           <Text style={styles.sponsored}>Sponsored</Text>
         ) : null}
       </View>

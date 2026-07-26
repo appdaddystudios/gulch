@@ -22,6 +22,7 @@ import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import {
   listEventsByIds,
+  listTrendingEvents,
   listUpcomingEvents,
   type EventListItem,
 } from "../../lib/events";
@@ -52,17 +53,21 @@ const SAVED_IDS_CAP = 30;
 
 type HomeData = {
   readonly events: readonly EventListItem[];
+  readonly trending: readonly EventListItem[];
   readonly byId: ReadonlyMap<string, EventListItem>;
   readonly organizers: readonly FeaturedOrganizer[];
   readonly config: HomeConfig;
 };
 
+const TRENDING_LIMIT = 6;
+
 const loadHome = async (
   client: Parameters<typeof listUpcomingEvents>[0],
   extraIds: readonly string[],
 ): Promise<HomeData> => {
-  const [events, extra, organizers, config] = await Promise.all([
+  const [events, ranked, extra, organizers, config] = await Promise.all([
     listUpcomingEvents(client, { limit: 12 }),
+    listTrendingEvents(client, { limit: TRENDING_LIMIT }),
     extraIds.length > 0 ? listEventsByIds(client, extraIds) : Promise.resolve([]),
     listFeaturedOrganizers(client, { limit: 9 }),
     getHomeConfig(client),
@@ -71,7 +76,14 @@ const loadHome = async (
   for (const event of [...events, ...extra]) {
     byId.set(event.id, event);
   }
-  return { events, byId, organizers, config };
+  // Save-ranked events lead; soonest upcoming fill the remaining slots so the
+  // rail stays populated before any saves accumulate.
+  const seen = new Set(ranked.map((event) => event.id));
+  const trending = [
+    ...ranked,
+    ...events.filter((event) => !seen.has(event.id)),
+  ].slice(0, TRENDING_LIMIT);
+  return { events, trending, byId, organizers, config };
 };
 
 export default function HomeScreen() {
@@ -117,6 +129,7 @@ export default function HomeScreen() {
       ? state.data
       : {
           events: [],
+          trending: [],
           byId: new Map(),
           organizers: [],
           config: HOME_CONFIG_DEFAULTS,
@@ -133,8 +146,8 @@ export default function HomeScreen() {
     .map((id) => data.byId.get(id))
     .filter((event): event is EventListItem => Boolean(event))
     .slice(0, RECENT_LIMIT);
-  // TODO(save-counts backend): order by aggregate saves and show "X saves".
-  const trendingEvents = data.events.slice(0, 6);
+  // Trending = most-saved upcoming events, ranked server-side in loadHome.
+  const trendingEvents = data.trending;
 
   // While loadHome is pending `data.config` is only the shipped fallback — a
   // tap then could open the wrong (superseded) survey URL, so wait for ready.
@@ -161,12 +174,19 @@ export default function HomeScreen() {
     setHeaderSearch(event.nativeEvent.contentOffset.y > SEARCH_COLLAPSE_OFFSET);
   };
 
-  const renderEventCards = (events: readonly EventListItem[]) =>
+  const renderEventCards = (
+    events: readonly EventListItem[],
+    { showSaves = false }: { readonly showSaves?: boolean } = {},
+  ) =>
     events.map((event) => (
       <BannerCard
         key={event.id}
         title={event.name}
-        subtitle={event.organizerName ?? "Event"}
+        subtitle={
+          showSaves && event.saveCount > 0
+            ? `${event.saveCount} ${event.saveCount === 1 ? "save" : "saves"}`
+            : (event.organizerName ?? "Event")
+        }
         onPress={() => router.push(`/event/${event.id}?source=home`)}
       />
     ));
@@ -208,7 +228,7 @@ export default function HomeScreen() {
 
         <Section title="Trending">
           <Carousel state={state.status} emptyText="Nothing trending yet.">
-            {renderEventCards(trendingEvents)}
+            {renderEventCards(trendingEvents, { showSaves: true })}
           </Carousel>
         </Section>
 

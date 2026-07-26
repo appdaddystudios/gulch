@@ -133,6 +133,7 @@ export type Database = {
           readonly image_fetched_at: string | null;
           readonly tickets_required: boolean;
           readonly editors_pick: boolean;
+          readonly sponsored: boolean;
           readonly is_video: boolean;
           readonly webflow_last_updated: string | null;
           readonly created_at: string;
@@ -153,6 +154,7 @@ export type Database = {
           readonly image_fetched_at?: string | null;
           readonly tickets_required?: boolean;
           readonly editors_pick?: boolean;
+          readonly sponsored?: boolean;
           readonly is_video?: boolean;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
@@ -173,6 +175,7 @@ export type Database = {
           readonly image_fetched_at?: string | null;
           readonly tickets_required?: boolean;
           readonly editors_pick?: boolean;
+          readonly sponsored?: boolean;
           readonly is_video?: boolean;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
@@ -330,9 +333,67 @@ export type Database = {
           }
         ];
       };
+      readonly event_saves: {
+        readonly Row: {
+          readonly event_id: string;
+          readonly device_id: string;
+          readonly created_at: string;
+        };
+        readonly Insert: {
+          readonly event_id: string;
+          readonly device_id: string;
+          readonly created_at?: string;
+        };
+        readonly Update: {
+          readonly event_id?: string;
+          readonly device_id?: string;
+          readonly created_at?: string;
+        };
+        readonly Relationships: [
+          {
+            readonly foreignKeyName: "event_saves_event_id_fkey";
+            readonly columns: ["event_id"];
+            readonly isOneToOne: false;
+            readonly referencedRelation: "events";
+            readonly referencedColumns: ["webflow_item_id"];
+          }
+        ];
+      };
+      readonly event_save_counts: {
+        readonly Row: {
+          readonly event_id: string;
+          readonly saves: number;
+        };
+        readonly Insert: {
+          readonly event_id: string;
+          readonly saves?: number;
+        };
+        readonly Update: {
+          readonly event_id?: string;
+          readonly saves?: number;
+        };
+        readonly Relationships: [
+          {
+            readonly foreignKeyName: "event_save_counts_event_id_fkey";
+            readonly columns: ["event_id"];
+            readonly isOneToOne: true;
+            readonly referencedRelation: "events";
+            readonly referencedColumns: ["webflow_item_id"];
+          }
+        ];
+      };
     };
     readonly Views: Record<string, never>;
-    readonly Functions: Record<string, never>;
+    readonly Functions: {
+      readonly set_event_saved: {
+        readonly Args: {
+          readonly p_event_id: string;
+          readonly p_device_id: string;
+          readonly p_saved: boolean;
+        };
+        readonly Returns: undefined;
+      };
+    };
     readonly Enums: Record<string, never>;
     readonly CompositeTypes: Record<string, never>;
   };
