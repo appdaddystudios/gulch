@@ -4,9 +4,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   CalendarIcon,
-  HomeIcon,
+  GulchGIcon,
+  HeartIcon,
   type IconProps,
-  LineupIcon,
   MapIcon,
   NewsletterIcon,
 } from "./icons";
@@ -19,10 +19,10 @@ type TabConfig = {
 
 // Keyed by the route (file) name in app/(tabs).
 const TAB_CONFIG: Record<string, TabConfig> = {
-  index: { label: "Home", Icon: HomeIcon },
+  index: { label: "Home", Icon: GulchGIcon },
   calendar: { label: "Calendar", Icon: CalendarIcon },
   map: { label: "Map", Icon: MapIcon },
-  lineup: { label: "Lineup", Icon: LineupIcon },
+  favorites: { label: "Favorites", Icon: HeartIcon },
   newsletter: { label: "Newsletter", Icon: NewsletterIcon },
 };
 

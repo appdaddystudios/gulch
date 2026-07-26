@@ -1,19 +1,31 @@
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { useCallback, useMemo } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  SectionList,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
+import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { EventCard } from "../../components/EventCard";
 import { Header } from "../../components/Header";
-import { LineupIcon } from "../../components/icons";
-import { SectionTitle } from "../../components/SectionTitle";
+import { HeartIcon } from "../../components/icons";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { listEventsByIds, type EventListItem } from "../../lib/events";
-import { color, space } from "../../theme";
+import { color, font, space } from "../../theme";
 
-export default function LineupScreen() {
+type FavoritesSection = {
+  readonly title: "Upcoming" | "Past";
+  readonly data: readonly EventListItem[];
+};
+
+// V3 Favorites (replaces Lineup): saved events split into Upcoming and Past.
+export default function FavoritesScreen() {
   const router = useRouter();
   const client = useDbClient();
   const { savedIds, isSaved, toggle } = useSavedEvents();
@@ -30,7 +42,10 @@ export default function LineupScreen() {
       <Header />
       <Body
         state={state}
-        onPressEvent={(event) => router.push(`/event/${event.id}?source=lineup`)}
+        onPressEvent={(event) =>
+          router.push(`/event/${event.id}?source=favorites`)
+        }
+        onExplore={() => router.push("/calendar")}
         isSaved={isSaved}
         onToggleSave={toggle}
       />
@@ -41,11 +56,13 @@ export default function LineupScreen() {
 function Body({
   state,
   onPressEvent,
+  onExplore,
   isSaved,
   onToggleSave,
 }: {
   readonly state: QueryState<readonly EventListItem[]>;
   readonly onPressEvent: (event: EventListItem) => void;
+  readonly onExplore: () => void;
   readonly isSaved: (id: string) => boolean;
   readonly onToggleSave: (id: string) => void;
 }) {
@@ -72,7 +89,7 @@ function Body({
     return (
       <Centered>
         <EmptyState
-          title="Couldn't load your lineup"
+          title="Couldn't load your favorites"
           subtitle={state.message}
         />
       </Centered>
@@ -83,21 +100,36 @@ function Body({
     return (
       <Centered>
         <EmptyState
-          icon={<LineupIcon size={48} color={color.gulchGreen} />}
-          title="Your Lineup is empty"
-          subtitle="Tap the heart on any event to save it here."
+          icon={<HeartIcon size={48} color={color.gulchGreen} filled />}
+          title="Save Your Favorites"
+          subtitle="Keep track of shows and events in one place so you can plan ahead."
+          action={
+            <Button label="Explore Events" tone="light" onPress={onExplore} />
+          }
         />
       </Centered>
     );
   }
 
+  // listEventsByIds returns ascending by start time; Past reads best most
+  // recent first.
+  const now = Date.now();
+  const upcoming = state.data.filter(
+    (event) => new Date(event.startAt).getTime() >= now,
+  );
+  const past = state.data
+    .filter((event) => new Date(event.startAt).getTime() < now)
+    .reverse();
+  const sections: FavoritesSection[] = [
+    { title: "Upcoming", data: upcoming },
+    { title: "Past", data: past },
+  ];
+
   return (
-    <FlatList
+    <SectionList
       contentContainerStyle={styles.listContent}
-      data={state.data}
+      sections={sections as Array<FavoritesSection & { data: EventListItem[] }>}
       keyExtractor={(item) => item.id}
-      ListHeaderComponent={<SectionTitle>Your Lineup</SectionTitle>}
-      ItemSeparatorComponent={Separator}
       renderItem={({ item }) => (
         <EventCard
           event={item}
@@ -106,6 +138,20 @@ function Body({
           onToggleSave={() => onToggleSave(item.id)}
         />
       )}
+      renderSectionHeader={({ section }) => (
+        <Text style={styles.sectionTitle}>{section.title}</Text>
+      )}
+      renderSectionFooter={({ section }) =>
+        section.data.length === 0 ? (
+          <Text style={styles.sectionEmpty}>
+            {section.title === "Upcoming"
+              ? "No upcoming favorites yet."
+              : "No past favorites yet."}
+          </Text>
+        ) : null
+      }
+      ItemSeparatorComponent={Separator}
+      stickySectionHeadersEnabled={false}
       showsVerticalScrollIndicator={false}
     />
   );
@@ -126,10 +172,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    gap: space.md,
     paddingBottom: space.xxl,
     paddingHorizontal: space.md,
     paddingTop: space.md,
+  },
+  sectionTitle: {
+    color: color.white,
+    fontFamily: font.bold,
+    fontSize: 24,
+    lineHeight: 30,
+    paddingBottom: space.md,
+    paddingTop: space.lg,
+  },
+  sectionEmpty: {
+    color: color.khakis,
+    fontFamily: font.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    paddingBottom: space.lg,
   },
   separator: {
     height: space.xl,
