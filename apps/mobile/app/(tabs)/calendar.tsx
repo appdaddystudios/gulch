@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   FlatList,
   Pressable,
   SectionList,
@@ -20,11 +21,17 @@ import { EmptyState } from "../../components/EmptyState";
 import { EventCard } from "../../components/EventCard";
 import { Header } from "../../components/Header";
 import { IconButton } from "../../components/IconButton";
-import { FileQuestionIcon, SearchIcon } from "../../components/icons";
+import {
+  CalendarSmallIcon,
+  FileQuestionIcon,
+  ListMenuIcon,
+  SearchIcon,
+} from "../../components/icons";
 import { SearchBar } from "../../components/SearchBar";
 import { SegmentedControl } from "../../components/SegmentedControl";
+import { Toast } from "../../components/Toast";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
-import { useSavedEvents } from "../../hooks/useSavedEvents";
+import { useSaveToast } from "../../hooks/useSaveToast";
 import {
   addDaysToKey,
   addMonthsToKey,
@@ -51,9 +58,27 @@ const SEARCH_CAPTURE_DELAY_MS = 1000;
 const SEARCH_COLLAPSE_RANGE = 96;
 
 const MODE_SEGMENTS = [
-  { key: "month", label: "Month" },
-  { key: "week", label: "Week" },
-  { key: "list", label: "List" },
+  {
+    key: "month",
+    label: "Month",
+    renderIcon: (active: boolean) => (
+      <CalendarSmallIcon color={active ? color.gulchGreen : color.khakis} />
+    ),
+  },
+  {
+    key: "week",
+    label: "Week",
+    renderIcon: (active: boolean) => (
+      <CalendarSmallIcon color={active ? color.gulchGreen : color.khakis} />
+    ),
+  },
+  {
+    key: "list",
+    label: "List",
+    renderIcon: (active: boolean) => (
+      <ListMenuIcon color={active ? color.gulchGreen : color.khakis} />
+    ),
+  },
 ] as const;
 
 const loadEvents = (client: Parameters<typeof listUpcomingEvents>[0]) =>
@@ -70,7 +95,7 @@ export default function CalendarScreen() {
   const client = useDbClient();
   const loader = useCallback(loadEvents, []);
   const { state } = useQuery(client, loader);
-  const { isSaved, toggle } = useSavedEvents();
+  const { isSaved, toggle, toastVisible, dismissToast } = useSaveToast();
 
   const todayKey = useMemo(() => dayKey(new Date().toISOString()), []);
   const [mode, setMode] = useState<ViewMode>("list");
@@ -93,6 +118,18 @@ export default function CalendarScreen() {
     outputRange: [1, 0],
     extrapolate: "clamp",
   });
+
+  // V3 punch list: soften the Month/Week/List swap with a short fade-in.
+  const modeFade = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    modeFade.setValue(0);
+    Animated.timing(modeFade, {
+      duration: 220,
+      easing: Easing.out(Easing.quad),
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  }, [mode, modeFade]);
 
   const events = state.status === "ready" ? state.data : [];
   const filtered = useMemo(() => {
@@ -191,6 +228,7 @@ export default function CalendarScreen() {
           </View>
         </View>
 
+        <Animated.View style={[styles.modeBody, { opacity: modeFade }]}>
         {state.status !== "ready" ? (
           <StatusView state={state} />
         ) : (
@@ -233,6 +271,12 @@ export default function CalendarScreen() {
             showsVerticalScrollIndicator={false}
           />
         )}
+        </Animated.View>
+        <Toast
+          message="Added to your favorites"
+          visible={toastVisible}
+          onDismiss={dismissToast}
+        />
       </View>
     );
   }
@@ -265,6 +309,7 @@ export default function CalendarScreen() {
         {segmented}
       </View>
 
+      <Animated.View style={[styles.modeBody, { opacity: modeFade }]}>
       {state.status !== "ready" ? (
         <StatusView state={state} />
       ) : sections.length === 0 ? (
@@ -321,6 +366,12 @@ export default function CalendarScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+      </Animated.View>
+      <Toast
+        message="Added to your favorites"
+        visible={toastVisible}
+        onDismiss={dismissToast}
+      />
     </View>
   );
 }
@@ -366,6 +417,9 @@ const styles = StyleSheet.create({
   screen: {
     // Oreo (darker) so the darkChocolate time pill + heart button read on cards.
     backgroundColor: color.oreo,
+    flex: 1,
+  },
+  modeBody: {
     flex: 1,
   },
   controlBar: {

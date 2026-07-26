@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   dayKey,
+  formatEventCardDate,
   formatEventDateTime,
   formatEventTimeCompact,
   formatWeekRange,
@@ -111,5 +112,17 @@ describe("formatWeekRange", () => {
 
   it("returns an empty string for an invalid key", () => {
     expect(formatWeekRange("nope")).toBe("");
+  });
+});
+
+describe("formatEventCardDate", () => {
+  it("formats as weekday, month day", () => {
+    expect(formatEventCardDate("2026-07-11T17:00:00Z", "UTC")).toBe(
+      "Sat, Jul 11",
+    );
+  });
+
+  it("returns an empty string for an invalid date", () => {
+    expect(formatEventCardDate("nope")).toBe("");
   });
 });

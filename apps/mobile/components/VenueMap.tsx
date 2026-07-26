@@ -16,8 +16,9 @@ import { Button } from "./Button";
 import { EmptyState } from "./EmptyState";
 import { EventCard } from "./EventCard";
 import { MapIcon } from "./icons";
+import { Toast } from "./Toast";
 import { useDbClient, useQuery, type QueryState } from "../hooks/useQuery";
-import { useSavedEvents } from "../hooks/useSavedEvents";
+import { useSaveToast } from "../hooks/useSaveToast";
 import { listMapVenues, type MapVenue } from "../lib/mapEvents";
 import { captureEvent } from "../lib/telemetry";
 import { color, radius, space, type as typePreset } from "../theme";
@@ -67,7 +68,7 @@ function Content({
   readonly eventSource: string;
 }) {
   const router = useRouter();
-  const { isSaved, toggle } = useSavedEvents();
+  const { isSaved, toggle, toastVisible, dismissToast } = useSaveToast();
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
 
   if (!MAPBOX_TOKEN) {
@@ -184,6 +185,12 @@ function Content({
           onOpenEvent={(id) => router.push(`/event/${id}?source=${eventSource}`)}
         />
       ) : null}
+
+      <Toast
+        message="Added to your favorites"
+        visible={toastVisible}
+        onDismiss={dismissToast}
+      />
     </View>
   );
 }
