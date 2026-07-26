@@ -18,6 +18,7 @@ type DashboardState =
         readonly locations: number;
         readonly events: number;
         readonly shows: number;
+        readonly organizers: number;
       };
       readonly config: HomepageConfig;
       readonly featured: FeaturedState;
@@ -60,7 +61,8 @@ const loadDashboardState = async (): Promise<DashboardState> => {
 const countCards = [
   { key: "locations", label: "Locations" },
   { key: "events", label: "Events" },
-  { key: "shows", label: "Shows" }
+  { key: "shows", label: "Shows" },
+  { key: "organizers", label: "Organizers" }
 ] as const;
 
 export default async function AdminPage() {
@@ -90,7 +92,7 @@ export default async function AdminPage() {
 
         {state.connected ? (
           <>
-            <div className="grid gap-5 sm:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {countCards.map((card) => (
                 <div
                   key={card.key}
