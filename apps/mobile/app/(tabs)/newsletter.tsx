@@ -52,9 +52,8 @@ export default function NewsletterScreen() {
             <IconButton
               accessibilityLabel="Go back"
               size={36}
-              onPress={
-                nav.canGoBack ? () => webViewRef.current?.goBack() : undefined
-              }
+              disabled={!nav.canGoBack}
+              onPress={() => webViewRef.current?.goBack()}
             >
               <ArrowLeftIcon
                 size={16}
@@ -64,11 +63,8 @@ export default function NewsletterScreen() {
             <IconButton
               accessibilityLabel="Go forward"
               size={36}
-              onPress={
-                nav.canGoForward
-                  ? () => webViewRef.current?.goForward()
-                  : undefined
-              }
+              disabled={!nav.canGoForward}
+              onPress={() => webViewRef.current?.goForward()}
             >
               <View style={styles.mirrored}>
                 <ArrowLeftIcon
@@ -87,10 +83,16 @@ export default function NewsletterScreen() {
             onError={() => setHasFailed(true)}
             onHttpError={() => setHasFailed(true)}
             onNavigationStateChange={(navState) =>
-              setNav({
-                canGoBack: navState.canGoBack,
-                canGoForward: navState.canGoForward,
-              })
+              // Fires repeatedly per load — bail out when nothing changed.
+              setNav((prev) =>
+                prev.canGoBack === navState.canGoBack &&
+                prev.canGoForward === navState.canGoForward
+                  ? prev
+                  : {
+                      canGoBack: navState.canGoBack,
+                      canGoForward: navState.canGoForward,
+                    },
+              )
             }
           />
           {isLoading ? (
