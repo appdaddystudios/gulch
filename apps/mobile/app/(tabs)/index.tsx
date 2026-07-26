@@ -123,8 +123,10 @@ export default function HomeScreen() {
     .map((id) => data.byId.get(id))
     .filter((event): event is EventListItem => Boolean(event))
     .slice(0, RECENT_LIMIT);
-  // TODO(save-counts backend): order by aggregate saves and show "X saves".
-  const trendingEvents = data.events.slice(0, 6);
+  // Trending = most-saved upcoming events (aggregate anonymous save counts).
+  const trendingEvents = [...data.events]
+    .sort((a, b) => b.saveCount - a.saveCount)
+    .slice(0, 6);
 
   // While loadHome is pending `data.config` is only the shipped fallback — a
   // tap then could open the wrong (superseded) survey URL, so wait for ready.
@@ -151,12 +153,19 @@ export default function HomeScreen() {
     setHeaderSearch(event.nativeEvent.contentOffset.y > SEARCH_COLLAPSE_OFFSET);
   };
 
-  const renderEventCards = (events: readonly EventListItem[]) =>
+  const renderEventCards = (
+    events: readonly EventListItem[],
+    { showSaves = false }: { readonly showSaves?: boolean } = {},
+  ) =>
     events.map((event) => (
       <BannerCard
         key={event.id}
         title={event.name}
-        subtitle={event.organizerName ?? "Event"}
+        subtitle={
+          showSaves && event.saveCount > 0
+            ? `${event.saveCount} ${event.saveCount === 1 ? "save" : "saves"}`
+            : (event.organizerName ?? "Event")
+        }
         onPress={() => router.push(`/event/${event.id}?source=home`)}
       />
     ));
@@ -198,7 +207,7 @@ export default function HomeScreen() {
 
         <Section title="Trending">
           <Carousel state={state.status} emptyText="Nothing trending yet.">
-            {renderEventCards(trendingEvents)}
+            {renderEventCards(trendingEvents, { showSaves: true })}
           </Carousel>
         </Section>
 

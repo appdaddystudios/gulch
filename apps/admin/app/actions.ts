@@ -12,6 +12,7 @@ import {
   setFeaturedOrganizers
 } from "@/lib/featured";
 import { getHomepageConfig, updateHomepageConfig, type HomepageConfigUpdate } from "@/lib/homeContent";
+import { setEventSponsored } from "@/lib/sponsoredEvents";
 import { createServiceSupabase } from "@/lib/supabase";
 
 export type ActionResult = {
@@ -240,3 +241,35 @@ export const moveFeaturedOrganizerDown = async (
   _prev: ActionResult,
   formData: FormData
 ): Promise<ActionResult> => editFeatured(formData, (ids, id) => moveInList(ids, id, "down"));
+
+// --- Sponsored events -------------------------------------------------------
+
+const sponsoredSchema = z.object({
+  eventId: z.string().trim().min(1, "Missing event id."),
+  sponsored: z.enum(["true", "false"])
+});
+
+export const toggleEventSponsored = async (
+  _prev: ActionResult,
+  formData: FormData
+): Promise<ActionResult> => {
+  try {
+    const parsed = sponsoredSchema.safeParse({
+      eventId: formData.get("eventId"),
+      sponsored: formData.get("sponsored")
+    });
+    if (!parsed.success) {
+      return invalid(parsed.error.issues[0]?.message);
+    }
+
+    await setEventSponsored(
+      requireServiceClient(),
+      parsed.data.eventId,
+      parsed.data.sponsored === "true"
+    );
+    revalidatePath("/");
+    return OK;
+  } catch (error) {
+    return fail(error);
+  }
+};
