@@ -32,6 +32,7 @@ import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { getEventDetail, type EventDetail } from "../../lib/events";
 import { instagramEmbedUrl } from "../../lib/instagramEmbed";
 import { openLink } from "../../lib/openLink";
+import { recordRecentlyViewed } from "../../lib/recentlyViewed";
 import { captureEvent } from "../../lib/telemetry";
 import { formatEventDateTime } from "../../lib/format";
 import { color, font, radius, space, type as typePreset } from "../../theme";
@@ -61,6 +62,7 @@ export default function EventDetailScreen() {
         event_name: state.data.name,
         source: source ?? null,
       });
+      void recordRecentlyViewed(state.data.id);
     }
   }, [state, source]);
 

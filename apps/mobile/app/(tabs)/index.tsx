@@ -1,61 +1,130 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 
 import { BannerAdSlot, BannerCard, PromoBanner } from "../../components/Banner";
 import { Button } from "../../components/Button";
 import { Header } from "../../components/Header";
+import { SearchIcon } from "../../components/icons";
 import { SearchBar } from "../../components/SearchBar";
 import { SectionTitle } from "../../components/SectionTitle";
+import { VenueMap } from "../../components/VenueMap";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
-import { listUpcomingEvents, type EventListItem } from "../../lib/events";
+import { useSavedEvents } from "../../hooks/useSavedEvents";
+import {
+  listEventsByIds,
+  listUpcomingEvents,
+  type EventListItem,
+} from "../../lib/events";
 import {
   getHomeConfig,
   HOME_CONFIG_DEFAULTS,
   type HomeConfig,
 } from "../../lib/homeConfig";
 import { openLink } from "../../lib/openLink";
-import { captureEvent } from "../../lib/telemetry";
 import {
   listFeaturedOrganizers,
   type FeaturedOrganizer,
 } from "../../lib/organizers";
-import { color, space, type as typePreset } from "../../theme";
+import { getRecentlyViewedIds } from "../../lib/recentlyViewed";
+import { captureEvent } from "../../lib/telemetry";
+import { color, radius, space, type as typePreset } from "../../theme";
+
+// Past this scroll offset the search bar has scrolled away, so the header
+// grows a search icon in its place (V3 "Home - Scrolled Search").
+const SEARCH_COLLAPSE_OFFSET = 72;
+const MAP_CARD_HEIGHT = 300;
+const FAVORITES_LIMIT = 6;
+const RECENT_LIMIT = 6;
 
 type HomeData = {
   readonly events: readonly EventListItem[];
+  readonly byId: ReadonlyMap<string, EventListItem>;
   readonly organizers: readonly FeaturedOrganizer[];
   readonly config: HomeConfig;
 };
 
 const loadHome = async (
   client: Parameters<typeof listUpcomingEvents>[0],
+  extraIds: readonly string[],
 ): Promise<HomeData> => {
-  const [events, organizers, config] = await Promise.all([
-    listUpcomingEvents(client, { limit: 18 }),
+  const [events, extra, organizers, config] = await Promise.all([
+    listUpcomingEvents(client, { limit: 12 }),
+    extraIds.length > 0 ? listEventsByIds(client, extraIds) : Promise.resolve([]),
     listFeaturedOrganizers(client, { limit: 9 }),
     getHomeConfig(client),
   ]);
-  return { events, organizers, config };
+  const byId = new Map<string, EventListItem>();
+  for (const event of [...events, ...extra]) {
+    byId.set(event.id, event);
+  }
+  return { events, byId, organizers, config };
 };
 
 export default function HomeScreen() {
   const router = useRouter();
   const client = useDbClient();
-  const loader = useCallback(loadHome, []);
+  const { savedIds } = useSavedEvents();
+  const [recentIds, setRecentIds] = useState<readonly string[]>([]);
+  const [headerSearch, setHeaderSearch] = useState(false);
+
+  // Re-read view history whenever Home regains focus so a just-viewed event
+  // appears without an app restart.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void getRecentlyViewedIds().then((ids) => {
+        if (active) {
+          setRecentIds(ids);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  const savedList = useMemo(() => [...savedIds].sort(), [savedIds]);
+  // Stable string deps so the loader identity only changes when ids change.
+  const savedKey = savedList.join(",");
+  const recentKey = recentIds.join(",");
+  const loader = useCallback(
+    (c: Parameters<typeof listUpcomingEvents>[0]) =>
+      loadHome(c, [...new Set([...savedList, ...recentIds])]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [savedKey, recentKey],
+  );
   const { state } = useQuery(client, loader);
 
   const data: HomeData =
     state.status === "ready"
       ? state.data
-      : { events: [], organizers: [], config: HOME_CONFIG_DEFAULTS };
+      : {
+          events: [],
+          byId: new Map(),
+          organizers: [],
+          config: HOME_CONFIG_DEFAULTS,
+        };
+
+  const favoriteEvents = savedList
+    .map((id) => data.byId.get(id))
+    .filter((event): event is EventListItem => Boolean(event))
+    .slice(0, FAVORITES_LIMIT);
+  const recentEvents = recentIds
+    .map((id) => data.byId.get(id))
+    .filter((event): event is EventListItem => Boolean(event))
+    .slice(0, RECENT_LIMIT);
+  // TODO(save-counts backend): order by aggregate saves and show "X saves".
+  const trendingEvents = data.events.slice(0, 6);
 
   // While loadHome is pending `data.config` is only the shipped fallback — a
   // tap then could open the wrong (superseded) survey URL, so wait for ready.
@@ -77,6 +146,11 @@ export default function HomeScreen() {
       }
     : undefined;
 
+  const openSearch = () => router.push("/calendar");
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    setHeaderSearch(event.nativeEvent.contentOffset.y > SEARCH_COLLAPSE_OFFSET);
+  };
+
   const renderEventCards = (events: readonly EventListItem[]) =>
     events.map((event) => (
       <BannerCard
@@ -89,59 +163,57 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.screen}>
-      <Header />
+      <Header
+        rightAction={
+          headerSearch ? (
+            <Pressable
+              accessibilityLabel="Search events"
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={openSearch}
+            >
+              <SearchIcon size={24} color={color.khakis} />
+            </Pressable>
+          ) : undefined
+        }
+      />
       <ScrollView
         contentContainerStyle={styles.content}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        <SearchBar onPress={() => router.push("/calendar")} />
+        <SearchBar onPress={openSearch} />
 
-        <Section title="Your Events">
-          <Carousel state={state.status} emptyText="No upcoming events yet.">
-            {renderEventCards(data.events.slice(0, 5))}
+        <Section title="Your Favorites">
+          <Carousel
+            state={state.status}
+            emptyText="Tap the heart on any event to see it here."
+          >
+            {renderEventCards(favoriteEvents)}
           </Carousel>
         </Section>
 
         {bannerAd ? <BannerAdSlot ad={bannerAd} onPress={openBannerAd} /> : null}
 
-        <Section title="Featured Organizations">
-          <Carousel
-            state={state.status}
-            emptyText="No featured organizations yet."
-          >
-            {data.organizers.map((organizer) => (
-              <BannerCard
-                key={organizer.id}
-                title={organizer.name}
-                subtitle="Organization"
-                height={96}
-                onPress={() =>
-                  void openLink(organizer.instagramUrl, "organizer_instagram")
-                }
-              />
-            ))}
+        <Section title="Trending">
+          <Carousel state={state.status} emptyText="Nothing trending yet.">
+            {renderEventCards(trendingEvents)}
           </Carousel>
         </Section>
 
-        <PromoBanner
-          title="Hotspots Map"
-          body="See what's happening around Atlanta right now."
-          tone="light"
-          minHeight={180}
-          onPress={() => router.push("/map")}
-          action={
-            <Button
-              label="Explore Map"
-              size="s"
-              tone="beige"
-              onPress={() => router.push("/map")}
-            />
-          }
-        />
+        <Section title="Hotspots Map">
+          <View style={styles.mapCard}>
+            <VenueMap compact eventSource="home" />
+          </View>
+        </Section>
 
-        <Section title="Trending">
-          <Carousel state={state.status} emptyText="Nothing trending yet.">
-            {renderEventCards(data.events.slice(5, 11))}
+        <Section title="Recently Viewed">
+          <Carousel
+            state={state.status}
+            emptyText="Events you open will show up here."
+          >
+            {renderEventCards(recentEvents)}
           </Carousel>
         </Section>
 
@@ -160,13 +232,22 @@ export default function HomeScreen() {
           }
         />
 
-        {/* TODO: back with on-device view history. */}
-        <Section title="Recently Viewed">
+        <Section title="Featured Organizations">
           <Carousel
             state={state.status}
-            emptyText="Events you open will show up here."
+            emptyText="No featured organizations yet."
           >
-            {renderEventCards(data.events.slice(11, 17))}
+            {data.organizers.map((organizer) => (
+              <BannerCard
+                key={organizer.id}
+                title={organizer.name}
+                subtitle="Organization"
+                height={96}
+                onPress={() =>
+                  void openLink(organizer.instagramUrl, "organizer_instagram")
+                }
+              />
+            ))}
           </Carousel>
         </Section>
       </ScrollView>
@@ -243,6 +324,13 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: space.md,
+  },
+  mapCard: {
+    borderColor: color.oreo,
+    borderRadius: radius.card,
+    borderWidth: 2,
+    height: MAP_CARD_HEIGHT,
+    overflow: "hidden",
   },
   carouselRow: {
     gap: space.md,
