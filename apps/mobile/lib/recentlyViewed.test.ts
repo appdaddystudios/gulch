@@ -76,6 +76,21 @@ describe("recordRecentlyViewed", () => {
     setItem.mockRejectedValueOnce(new Error("disk full"));
     await expect(recordRecentlyViewed("a")).resolves.toBeUndefined();
   });
+
+  it("serializes concurrent records so none are lost", async () => {
+    await Promise.all([
+      recordRecentlyViewed("a"),
+      recordRecentlyViewed("b"),
+      recordRecentlyViewed("c"),
+    ]);
+    expect(await getRecentlyViewedIds()).toEqual(["c", "b", "a"]);
+  });
+
+  it("heals pre-existing duplicates in the stored list", async () => {
+    store.set(RECENTLY_VIEWED_KEY, '["a","b","a","b"]');
+    await recordRecentlyViewed("c");
+    expect(await getRecentlyViewedIds()).toEqual(["c", "a", "b"]);
+  });
 });
 
 describe("getRecentlyViewedIds", () => {

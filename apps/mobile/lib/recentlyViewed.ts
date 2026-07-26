@@ -26,16 +26,24 @@ export const getRecentlyViewedIds = async (): Promise<readonly string[]> => {
   }
 };
 
-// Most-recent-first, deduped, capped — a re-view moves the event to the front.
-export const recordRecentlyViewed = async (id: string): Promise<void> => {
+const performRecord = async (id: string): Promise<void> => {
   try {
     const current = parseRecentIds(await AsyncStorage.getItem(RECENTLY_VIEWED_KEY));
-    const next = [id, ...current.filter((value) => value !== id)].slice(
-      0,
-      MAX_RECENT,
-    );
+    // Set dedupes the entire list, healing any pre-existing duplicates while
+    // moving the fresh id to the front.
+    const next = [...new Set([id, ...current])].slice(0, MAX_RECENT);
     await AsyncStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next));
   } catch {
     // Best-effort history — a failed write must never break the details view.
   }
+};
+
+// Read-modify-write cycles are serialized through a module-level queue so
+// rapid successive event opens can't interleave and drop each other's entries.
+let writeQueue: Promise<void> = Promise.resolve();
+
+// Most-recent-first, deduped, capped — a re-view moves the event to the front.
+export const recordRecentlyViewed = (id: string): Promise<void> => {
+  writeQueue = writeQueue.then(() => performRecord(id));
+  return writeQueue;
 };
