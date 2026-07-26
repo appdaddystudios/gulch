@@ -9,7 +9,7 @@ import { NewsletterIcon } from "../../components/icons";
 import { captureEvent } from "../../lib/telemetry";
 import { color, space } from "../../theme";
 
-const NEWSLETTER_EMBED_URL = "https://gulchmag.substack.com/embed";
+const NEWSLETTER_EMBED_URL = "https://gulchmag.substack.com";
 
 export default function NewsletterScreen() {
   const [isLoading, setIsLoading] = useState(true);
