@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addMonths,
+  addMonthsToKey,
   dayNumber,
   monthCursorFromKey,
   monthGrid,
@@ -63,5 +64,22 @@ describe("dayNumber", () => {
   it("strips the leading zero", () => {
     expect(dayNumber("2025-07-07")).toBe("7");
     expect(dayNumber("2025-07-31")).toBe("31");
+  });
+});
+
+describe("addMonthsToKey", () => {
+  it("keeps the day-of-month when it exists in the target month", () => {
+    expect(addMonthsToKey("2026-07-11", 1)).toBe("2026-08-11");
+    expect(addMonthsToKey("2026-07-11", -1)).toBe("2026-06-11");
+  });
+
+  it("clamps to the target month's length", () => {
+    expect(addMonthsToKey("2026-01-31", 1)).toBe("2026-02-28");
+    expect(addMonthsToKey("2024-01-31", 1)).toBe("2024-02-29");
+  });
+
+  it("crosses year boundaries", () => {
+    expect(addMonthsToKey("2026-12-15", 1)).toBe("2027-01-15");
+    expect(addMonthsToKey("2026-01-15", -1)).toBe("2025-12-15");
   });
 });
