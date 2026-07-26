@@ -27,7 +27,7 @@ import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import {
   addDaysToKey,
-  addMonths,
+  addMonthsToKey,
   dayTitle,
   monthCursorFromKey,
   type MonthCursor,
@@ -206,12 +206,12 @@ export default function CalendarScreen() {
                   onPrev={() =>
                     mode === "week"
                       ? stepDay(-7)
-                      : setCursor((c) => addMonths(c, -1))
+                      : selectDay(addMonthsToKey(selectedKey, -1))
                   }
                   onNext={() =>
                     mode === "week"
                       ? stepDay(7)
-                      : setCursor((c) => addMonths(c, 1))
+                      : selectDay(addMonthsToKey(selectedKey, 1))
                   }
                   onSelectDay={selectDay}
                 />

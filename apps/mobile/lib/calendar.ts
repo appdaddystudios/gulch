@@ -57,6 +57,17 @@ export const addDaysToKey = (key: string, delta: number): string => {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 };
 
+// Same day-of-month `delta` months away, clamped to the target month's length
+// (Jan 31 stepped forward lands on Feb 28/29, not Mar 3).
+export const addMonthsToKey = (key: string, delta: number): string => {
+  const cursor = addMonths(monthCursorFromKey(key), delta);
+  const day = Number(key.slice(8, 10));
+  const daysInMonth = new Date(
+    Date.UTC(cursor.year, cursor.monthIndex + 1, 0),
+  ).getUTCDate();
+  return dayKeyFor(cursor, Math.min(day, daysInMonth));
+};
+
 // The Sunday-start week containing `key`, as 7 day keys.
 export const weekOf = (key: string): readonly string[] => {
   const start = addDaysToKey(key, -keyToUtcDate(key).getUTCDay());
