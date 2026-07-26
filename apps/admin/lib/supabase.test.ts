@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase, createServiceSupabase } from "./supabase";
 
 describe("createServerSupabase", () => {
   it("reads request-time env when no env override is provided", () => {
@@ -54,6 +54,43 @@ describe("createServerSupabase", () => {
       createServerSupabase({
         EXPO_PUBLIC_SUPABASE_URL: "not-a-url",
         EXPO_PUBLIC_SUPABASE_ANON_KEY: "public-anon-key"
+      })
+    ).toBeNull();
+    expect(error).toHaveBeenCalled();
+
+    error.mockRestore();
+  });
+});
+
+describe("createServiceSupabase", () => {
+  it("returns null when the service role key is missing", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    expect(createServiceSupabase({ EXPO_PUBLIC_SUPABASE_URL: "https://example.supabase.co" })).toBeNull();
+    expect(info).toHaveBeenCalledWith(
+      "Supabase service client not created: missing Supabase URL or service role key."
+    );
+
+    info.mockRestore();
+  });
+
+  it("returns a Supabase client when service env is present", () => {
+    const client = createServiceSupabase({
+      EXPO_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "service-role-key"
+    });
+
+    expect(client).not.toBeNull();
+    expect(typeof client?.from).toBe("function");
+  });
+
+  it("returns null for invalid Supabase configuration", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    expect(
+      createServiceSupabase({
+        EXPO_PUBLIC_SUPABASE_URL: "not-a-url",
+        SUPABASE_SERVICE_ROLE_KEY: "service-role-key"
       })
     ).toBeNull();
     expect(error).toHaveBeenCalled();
