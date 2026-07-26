@@ -45,6 +45,10 @@ const SEARCH_COLLAPSE_OFFSET = 72;
 const MAP_CARD_HEIGHT = 300;
 const FAVORITES_LIMIT = 6;
 const RECENT_LIMIT = 6;
+// Bounds the `.in(...)` id filter Home sends to PostgREST — the carousels only
+// render 6 items each, so a heavy saver must not bloat the request. TODO: once
+// the save ledger ships, a server-side top-N query can replace the cap.
+const SAVED_IDS_CAP = 30;
 
 type HomeData = {
   readonly events: readonly EventListItem[];
@@ -93,7 +97,10 @@ export default function HomeScreen() {
     }, []),
   );
 
-  const savedList = useMemo(() => [...savedIds].sort(), [savedIds]);
+  const savedList = useMemo(
+    () => [...savedIds].sort().slice(0, SAVED_IDS_CAP),
+    [savedIds],
+  );
   // Stable string deps so the loader identity only changes when ids change.
   const savedKey = savedList.join(",");
   const recentKey = recentIds.join(",");
@@ -115,9 +122,12 @@ export default function HomeScreen() {
           config: HOME_CONFIG_DEFAULTS,
         };
 
+  // Soonest-first — savedList is id-sorted for stable query deps, which is
+  // meaningless for display.
   const favoriteEvents = savedList
     .map((id) => data.byId.get(id))
     .filter((event): event is EventListItem => Boolean(event))
+    .sort((a, b) => (a.startAt < b.startAt ? -1 : a.startAt > b.startAt ? 1 : 0))
     .slice(0, FAVORITES_LIMIT);
   const recentEvents = recentIds
     .map((id) => data.byId.get(id))

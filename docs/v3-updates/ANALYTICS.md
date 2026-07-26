@@ -24,7 +24,7 @@
 |---|---|---|
 | `event_viewed` | `event_id`, `event_name`, `source` (`home` \| `calendar` \| `map` \| `favorites` \| `null` for deep links; `lineup` in pre-V3 data) | `app/event/[id].tsx` once per successful load |
 | `event_saved` / `event_unsaved` | `event_id` | `hooks/useSavedEvents.tsx` toggle |
-| `link_opened` | `domain` (hostname only), `context` (`organizer_instagram` \| `research_banner` \| `event_share` \| `banner_ad` \| `null`) | `lib/openLink.ts` — every external link |
+| `link_opened` | `domain` (hostname only), `context` (`organizer_instagram` \| `research_banner` \| `event_share` \| `event_more_information` \| `banner_ad` \| `null`) | `lib/openLink.ts` — every external link |
 | `search_performed` | `query_length`, `result_count` (never the query text) | Calendar search, debounced 1s |
 | `map_opened` | — | Map tab mount |
 | `map_pin_tapped` | `venue_id`, `venue_name`, `event_count` | Venue pin select (not deselect) |

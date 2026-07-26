@@ -134,8 +134,10 @@ export default function CalendarScreen() {
   };
 
   const goToday = () => {
-    setCursor(monthCursorFromKey(todayKey));
-    setSelectedKey(todayKey);
+    // Recompute at tap time — the mount-time key goes stale past midnight.
+    const key = dayKey(new Date().toISOString());
+    setCursor(monthCursorFromKey(key));
+    setSelectedKey(key);
   };
 
   const selectDay = (key: string) => {
