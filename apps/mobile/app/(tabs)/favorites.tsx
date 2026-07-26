@@ -126,9 +126,9 @@ function Body({
   ];
 
   return (
-    <SectionList
+    <SectionList<EventListItem, FavoritesSection>
       contentContainerStyle={styles.listContent}
-      sections={sections as Array<FavoritesSection & { data: EventListItem[] }>}
+      sections={sections}
       keyExtractor={(item) => item.id}
       renderItem={({ item }) => (
         <EventCard

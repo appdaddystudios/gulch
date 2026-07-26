@@ -291,10 +291,10 @@ export default function CalendarScreen() {
           </Centered>
         )
       ) : (
-        <SectionList
+        <SectionList<EventListItem, EventWeekSection>
           ref={listRef}
           contentContainerStyle={styles.listContent}
-          sections={sections as EventWeekSection[]}
+          sections={sections}
           keyExtractor={(item) => item.id}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { y: scrollY } } }],
