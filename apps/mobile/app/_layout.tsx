@@ -6,16 +6,18 @@ import {
 import { useFonts } from "expo-font";
 import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AnimatedSplash } from "../components/AnimatedSplash";
 import { SavedEventsProvider } from "../hooks/useSavedEvents";
 import { color } from "../theme";
 import { captureScreen, initTelemetry } from "../lib/telemetry";
 
 export default function RootLayout() {
   const pathname = usePathname();
+  const [splashDone, setSplashDone] = useState(false);
   const [fontsLoaded] = useFonts({
     Ubuntu_400Regular,
     Ubuntu_500Medium,
@@ -42,6 +44,12 @@ export default function RootLayout() {
         ) : (
           <View style={{ flex: 1, backgroundColor: color.darkChocolate }} />
         )}
+        {!splashDone ? (
+          <AnimatedSplash
+            ready={fontsLoaded}
+            onDone={() => setSplashDone(true)}
+          />
+        ) : null}
       </SavedEventsProvider>
     </SafeAreaProvider>
   );
