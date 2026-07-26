@@ -333,6 +333,32 @@ export type Database = {
           }
         ];
       };
+      readonly event_saves: {
+        readonly Row: {
+          readonly event_id: string;
+          readonly device_id: string;
+          readonly created_at: string;
+        };
+        readonly Insert: {
+          readonly event_id: string;
+          readonly device_id: string;
+          readonly created_at?: string;
+        };
+        readonly Update: {
+          readonly event_id?: string;
+          readonly device_id?: string;
+          readonly created_at?: string;
+        };
+        readonly Relationships: [
+          {
+            readonly foreignKeyName: "event_saves_event_id_fkey";
+            readonly columns: ["event_id"];
+            readonly isOneToOne: false;
+            readonly referencedRelation: "events";
+            readonly referencedColumns: ["webflow_item_id"];
+          }
+        ];
+      };
       readonly event_save_counts: {
         readonly Row: {
           readonly event_id: string;
@@ -359,10 +385,11 @@ export type Database = {
     };
     readonly Views: Record<string, never>;
     readonly Functions: {
-      readonly increment_event_save: {
+      readonly set_event_saved: {
         readonly Args: {
           readonly p_event_id: string;
-          readonly p_delta: number;
+          readonly p_device_id: string;
+          readonly p_saved: boolean;
         };
         readonly Returns: undefined;
       };

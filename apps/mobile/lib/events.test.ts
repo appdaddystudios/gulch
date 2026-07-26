@@ -5,6 +5,7 @@ import {
   getEventDetail,
   groupEventsByWeek,
   listEventsByIds,
+  listTrendingEvents,
   listUpcomingEvents,
   type EventListItem,
 } from "./events";
@@ -15,6 +16,7 @@ const makeBuilder = (result: QueryResult) => {
   const builder: Record<string, unknown> = {};
   for (const method of [
     "select",
+    "gt",
     "gte",
     "eq",
     "in",
@@ -210,6 +212,37 @@ describe("listEventsByIds", () => {
     const error = new Error("rls denied");
     await expect(
       listEventsByIds(makeClient({ data: null, error }), ["evt-1"]),
+    ).rejects.toThrow("rls denied");
+  });
+});
+
+describe("listTrendingEvents", () => {
+  it("maps ranked rows and applies each row's save count", async () => {
+    const client = makeClient({
+      data: [{ saves: 4, events: baseRow }],
+      error: null,
+    });
+
+    const result = await listTrendingEvents(client, {
+      nowIso: "2026-06-01T00:00:00Z",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe("evt-1");
+    expect(result[0]?.saveCount).toBe(4);
+  });
+
+  it("returns an empty list when no events have saves", async () => {
+    const client = makeClient({ data: null, error: null });
+    await expect(
+      listTrendingEvents(client, { nowIso: "2026-06-01T00:00:00Z" }),
+    ).resolves.toEqual([]);
+  });
+
+  it("throws when Supabase returns an error", async () => {
+    const client = makeClient({ data: null, error: new Error("rls denied") });
+    await expect(
+      listTrendingEvents(client, { nowIso: "2026-06-01T00:00:00Z" }),
     ).rejects.toThrow("rls denied");
   });
 });

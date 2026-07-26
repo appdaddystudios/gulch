@@ -30,8 +30,10 @@ export type EventListItem = {
 export type EventDetail = EventListItem;
 
 // PostgREST select used by every events query in the app.
-export const EVENT_SELECT =
-  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, sponsored, is_video, external_link, locations(name), event_organizers(organizers(name)), event_save_counts(saves)";
+const EVENT_FIELDS =
+  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, sponsored, is_video, external_link, locations(name), event_organizers(organizers(name))";
+
+export const EVENT_SELECT = `${EVENT_FIELDS}, event_save_counts(saves)`;
 
 const namedSchema = z.object({ name: z.string() });
 
@@ -142,6 +144,42 @@ export const listUpcomingEvents = async (
   }
 
   return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
+};
+
+const rawTrendingRowSchema = z.object({
+  saves: z.number(),
+  events: rawEventSchema,
+});
+
+type ListTrendingOptions = {
+  readonly limit?: number;
+  readonly nowIso?: string;
+};
+
+// Most-saved upcoming events, ranked server-side across ALL upcoming events
+// (not just the soonest page) via the event_save_counts counter table.
+export const listTrendingEvents = async (
+  client: DbClient,
+  { limit = 6, nowIso }: ListTrendingOptions = {},
+): Promise<readonly EventListItem[]> => {
+  const startBoundary = nowIso ?? new Date().toISOString();
+
+  const { data, error } = await client
+    .from("event_save_counts")
+    .select(`saves, events!inner(${EVENT_FIELDS})`)
+    .gt("saves", 0)
+    .gte("events.start_at", startBoundary)
+    .order("saves", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => {
+    const parsed = rawTrendingRowSchema.parse(row);
+    return { ...toEventListItem(parsed.events), saveCount: parsed.saves };
+  });
 };
 
 // Events matching a set of ids (for the saved/lineup list), soonest first.

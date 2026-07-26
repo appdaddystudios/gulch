@@ -15,6 +15,7 @@ import {
   serializeSavedIds,
   toggleSavedId,
 } from "../lib/savedEvents";
+import { getDeviceId } from "../lib/deviceId";
 import { createMobileSupabase } from "../lib/supabase";
 import { captureEvent } from "../lib/telemetry";
 
@@ -58,9 +59,16 @@ export function SavedEventsProvider({ children }: { readonly children: ReactNode
           // Best-effort persistence; in-memory state still updates.
         },
       );
-      // Aggregate save counter (Trending "X saves") — best-effort, anonymous.
-      void createMobileSupabase()
-        ?.rpc("increment_event_save", { p_event_id: id, p_delta: added ? 1 : -1 })
+      // Aggregate save ledger (Trending "X saves") — best-effort, anonymous,
+      // idempotent per device so replays can't inflate counts.
+      void getDeviceId()
+        .then((deviceId) =>
+          createMobileSupabase()?.rpc("set_event_saved", {
+            p_event_id: id,
+            p_device_id: deviceId,
+            p_saved: added,
+          }),
+        )
         .then(null, () => {
           // Counter drift on failure is acceptable; saves stay device-local.
         });
