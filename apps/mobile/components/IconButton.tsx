@@ -11,6 +11,7 @@ type IconButtonProps = {
   readonly children: ReactNode;
   readonly size?: number;
   readonly selected?: boolean;
+  readonly disabled?: boolean;
 };
 
 // Circular outlined icon button — V3 uses it for the header/control-bar search,
@@ -21,12 +22,14 @@ export function IconButton({
   children,
   size = DEFAULT_SIZE,
   selected = false,
+  disabled = false,
 }: IconButtonProps) {
   return (
     <Pressable
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
-      accessibilityState={selected ? { selected } : undefined}
+      accessibilityState={{ selected, disabled }}
+      disabled={disabled}
       hitSlop={4}
       onPress={onPress}
       style={({ pressed }) => [
