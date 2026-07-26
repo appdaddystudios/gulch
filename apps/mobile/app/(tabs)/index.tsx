@@ -26,6 +26,7 @@ import {
   listUpcomingEvents,
   type EventListItem,
 } from "../../lib/events";
+import { formatEventCardDate } from "../../lib/format";
 import {
   getHomeConfig,
   HOME_CONFIG_DEFAULTS,
@@ -185,7 +186,7 @@ export default function HomeScreen() {
         subtitle={
           showSaves && event.saveCount > 0
             ? `${event.saveCount} ${event.saveCount === 1 ? "save" : "saves"}`
-            : (event.organizerName ?? "Event")
+            : formatEventCardDate(event.startAt)
         }
         onPress={() => router.push(`/event/${event.id}?source=home`)}
       />

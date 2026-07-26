@@ -171,3 +171,20 @@ export const formatWeekRange = (weekStartKeyValue: string): string => {
 
   return `${monthDay(start)} – ${endLabel}`;
 };
+
+// Card subtitle date for the Home rails, e.g. "Fri, Jul 11".
+export const formatEventCardDate = (
+  iso: string,
+  timeZone: string = DEFAULT_TIME_ZONE,
+): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone,
+  }).format(date);
+};

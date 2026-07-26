@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { TwoDotText } from "./TwoDotText";
 import type { BannerAd } from "../lib/homeConfig";
 import { color, hardShadow, radius, space, type as typePreset } from "../theme";
 
@@ -36,9 +37,7 @@ export function BannerCard({
       ]}
     >
       <View style={styles.compactContent}>
-        <Text style={styles.compactTitle} numberOfLines={1}>
-          {title}
-        </Text>
+        <TwoDotText text={title} style={styles.compactTitle} />
         {subtitle ? (
           <Text style={styles.compactSubtitle} numberOfLines={1}>
             {subtitle}
@@ -169,7 +168,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   compactTitle: {
-    ...typePreset.bodyBold14,
+    ...typePreset.captionBold12,
     color: color.white,
     width: "100%",
   },

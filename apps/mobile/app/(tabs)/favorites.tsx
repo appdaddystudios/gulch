@@ -14,8 +14,9 @@ import { EmptyState } from "../../components/EmptyState";
 import { EventCard } from "../../components/EventCard";
 import { Header } from "../../components/Header";
 import { HeartIcon } from "../../components/icons";
+import { Toast } from "../../components/Toast";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
-import { useSavedEvents } from "../../hooks/useSavedEvents";
+import { useSaveToast } from "../../hooks/useSaveToast";
 import { listEventsByIds, type EventListItem } from "../../lib/events";
 import { color, font, space } from "../../theme";
 
@@ -28,7 +29,8 @@ type FavoritesSection = {
 export default function FavoritesScreen() {
   const router = useRouter();
   const client = useDbClient();
-  const { savedIds, isSaved, toggle } = useSavedEvents();
+  const { savedIds, isSaved, toggle, toastVisible, toastNonce, dismissToast } =
+    useSaveToast();
 
   const ids = useMemo(() => [...savedIds].sort(), [savedIds]);
   const loader = useCallback(
@@ -48,6 +50,12 @@ export default function FavoritesScreen() {
         onExplore={() => router.push("/calendar")}
         isSaved={isSaved}
         onToggleSave={toggle}
+      />
+      <Toast
+        key={toastNonce}
+        message="Added to your favorites"
+        visible={toastVisible}
+        onDismiss={dismissToast}
       />
     </View>
   );

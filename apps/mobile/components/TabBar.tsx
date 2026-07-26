@@ -1,12 +1,13 @@
-import type { ComponentType } from "react";
+import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  CalendarFilledIcon,
   CalendarIcon,
-  GulchGIcon,
+  GulchGCircleIcon,
   HeartIcon,
-  type IconProps,
+  MapFilledIcon,
   MapIcon,
   NewsletterIcon,
 } from "./icons";
@@ -14,16 +15,41 @@ import { color, space, type as typePreset } from "../theme";
 
 type TabConfig = {
   readonly label: string;
-  readonly Icon: ComponentType<IconProps>;
+  // Focused tabs render their filled/colored variant; unfocused take the tint.
+  readonly renderIcon: (focused: boolean, tint: string) => ReactNode;
 };
 
 // Keyed by the route (file) name in app/(tabs).
 const TAB_CONFIG: Record<string, TabConfig> = {
-  index: { label: "Home", Icon: GulchGIcon },
-  calendar: { label: "Calendar", Icon: CalendarIcon },
-  map: { label: "Map", Icon: MapIcon },
-  favorites: { label: "Favorites", Icon: HeartIcon },
-  newsletter: { label: "Newsletter", Icon: NewsletterIcon },
+  index: {
+    label: "Home",
+    renderIcon: (focused) => <GulchGCircleIcon size={24} selected={focused} />,
+  },
+  calendar: {
+    label: "Calendar",
+    renderIcon: (focused, tint) =>
+      focused ? (
+        <CalendarFilledIcon size={24} />
+      ) : (
+        <CalendarIcon size={24} color={tint} />
+      ),
+  },
+  map: {
+    label: "Map",
+    renderIcon: (focused, tint) =>
+      focused ? <MapFilledIcon size={24} /> : <MapIcon size={24} color={tint} />,
+  },
+  favorites: {
+    label: "Favorites",
+    renderIcon: (focused, tint) => (
+      <HeartIcon size={24} color={tint} filled={focused} />
+    ),
+  },
+  newsletter: {
+    // No filled asset exists — the outline keeps the tint when selected.
+    label: "Newsletter",
+    renderIcon: (_focused, tint) => <NewsletterIcon size={24} color={tint} />,
+  },
 };
 
 // Structural subset of the navigator's tab-bar props (decoupled from the
@@ -65,7 +91,6 @@ export function TabBar({ state, navigation }: TabBarProps) {
 
           const isFocused = state.index === index;
           const tint = isFocused ? color.gulchGreen : color.khakis;
-          const { Icon } = config;
 
           const onPress = () => {
             const event = navigation.emit({
@@ -86,7 +111,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
               onPress={onPress}
               style={styles.item}
             >
-              <Icon size={24} color={tint} />
+              {config.renderIcon(isFocused, tint)}
               <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
                 {config.label}
               </Text>

@@ -36,7 +36,8 @@ export async function openLink(
   });
 
   try {
-    await WebBrowser.openBrowserAsync(url);
+    // "close" renders an ✕ on the iOS sheet instead of the default "Done" check.
+    await WebBrowser.openBrowserAsync(url, { dismissButtonStyle: "close" });
   } catch (browserError) {
     captureException(browserError);
     try {
