@@ -47,3 +47,36 @@ export const monthGrid = (cursor: MonthCursor): readonly (string | null)[] => {
 
 // Day-of-month number ("1".."31") from a day key.
 export const dayNumber = (key: string): string => String(Number(key.slice(8, 10)));
+
+// Day keys are timezone-less "YYYY-MM-DD"; pinning UTC keeps the math pure.
+const keyToUtcDate = (key: string): Date => new Date(`${key}T00:00:00Z`);
+
+export const addDaysToKey = (key: string, delta: number): string => {
+  const date = keyToUtcDate(key);
+  date.setUTCDate(date.getUTCDate() + delta);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+};
+
+// The Sunday-start week containing `key`, as 7 day keys.
+export const weekOf = (key: string): readonly string[] => {
+  const start = addDaysToKey(key, -keyToUtcDate(key).getUTCDay());
+  return Array.from({ length: 7 }, (_, index) => addDaysToKey(start, index));
+};
+
+// "Friday, July 11, 2026" — the V3 day-stepper label.
+export const dayTitle = (key: string): string =>
+  new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(keyToUtcDate(key));
+
+// "July 2026" — the V3 calendar heading.
+export const monthYearTitle = (cursor: MonthCursor): string =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(cursor.year, cursor.monthIndex, 1)));

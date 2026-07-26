@@ -1,16 +1,18 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { IconButton } from "./IconButton";
 import { ArrowLeftIcon } from "./icons";
 import {
   dayNumber,
   monthGrid,
-  monthTitle,
+  monthYearTitle,
+  weekOf,
   type MonthCursor,
 } from "../lib/calendar";
 import { color, font, radius, space } from "../theme";
 
 const CELL = 48;
-const DOW = ["S", "M", "T", "W", "T", "F", "S"] as const;
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 type DatePickerProps = {
   readonly cursor: MonthCursor;
@@ -19,6 +21,9 @@ type DatePickerProps = {
   readonly onPrev: () => void;
   readonly onNext: () => void;
   readonly onSelectDay: (key: string) => void;
+  // When set, renders only the Sunday-start week containing this key
+  // (V3 Week view); the arrows then step weeks instead of months.
+  readonly weekAnchor?: string;
 };
 
 export function DatePicker({
@@ -28,38 +33,28 @@ export function DatePicker({
   onPrev,
   onNext,
   onSelectDay,
+  weekAnchor,
 }: DatePickerProps) {
-  const cells = monthGrid(cursor);
+  const cells = weekAnchor ? weekOf(weekAnchor) : monthGrid(cursor);
+  const stepLabel = weekAnchor ? "week" : "month";
 
   return (
     <View style={styles.container}>
       <View style={styles.monthRow}>
-        <Text style={styles.monthTitle}>{monthTitle(cursor)}</Text>
-        <View style={styles.arrows}>
-          <Pressable
-            accessibilityLabel="Previous month"
-            accessibilityRole="button"
-            onPress={onPrev}
-            style={styles.arrowButton}
-          >
-            <ArrowLeftIcon size={18} color={color.oreo} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Next month"
-            accessibilityRole="button"
-            onPress={onNext}
-            style={styles.arrowButton}
-          >
-            <View style={styles.flip}>
-              <ArrowLeftIcon size={18} color={color.oreo} />
-            </View>
-          </Pressable>
-        </View>
+        <IconButton accessibilityLabel={`Previous ${stepLabel}`} onPress={onPrev}>
+          <ArrowLeftIcon size={18} color={color.khakis} />
+        </IconButton>
+        <Text style={styles.monthTitle}>{monthYearTitle(cursor)}</Text>
+        <IconButton accessibilityLabel={`Next ${stepLabel}`} onPress={onNext}>
+          <View style={styles.flip}>
+            <ArrowLeftIcon size={18} color={color.khakis} />
+          </View>
+        </IconButton>
       </View>
 
       <View style={styles.grid}>
         {DOW.map((label, index) => (
-          <View key={`dow-${index}`} style={styles.cell}>
+          <View key={`dow-${index}`} style={styles.dowCell}>
             <Text style={styles.dowLabel}>{label}</Text>
           </View>
         ))}
@@ -82,6 +77,7 @@ export function DatePicker({
               <View
                 style={[
                   styles.dateInner,
+                  hasEvent && !isSelected ? styles.dateHasEvent : null,
                   isSelected ? styles.dateSelected : null,
                 ]}
               >
@@ -113,29 +109,16 @@ const styles = StyleSheet.create({
   monthRow: {
     alignItems: "center",
     flexDirection: "row",
-    height: 96,
     justifyContent: "space-between",
+    paddingVertical: space.lg,
     width: CELL * 7,
   },
   monthTitle: {
     color: color.white,
     fontFamily: font.bold,
-    fontSize: 32,
-    letterSpacing: -0.32,
-    lineHeight: 40,
-  },
-  arrows: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: space.lg,
-  },
-  arrowButton: {
-    alignItems: "center",
-    backgroundColor: color.khakis,
-    borderRadius: radius.pill,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
+    fontSize: 24,
+    letterSpacing: -0.24,
+    lineHeight: 30,
   },
   flip: {
     transform: [{ scaleX: -1 }],
@@ -147,6 +130,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: CELL * 7,
   },
+  dowCell: {
+    alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    width: CELL,
+  },
   cell: {
     alignItems: "center",
     height: CELL,
@@ -155,9 +144,9 @@ const styles = StyleSheet.create({
   },
   dowLabel: {
     color: color.khakis,
-    fontFamily: font.bold,
-    fontSize: 16,
-    lineHeight: 24,
+    fontFamily: font.regular,
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: "center",
   },
   dateInner: {
@@ -167,19 +156,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 40,
   },
+  dateHasEvent: {
+    borderColor: color.brown300,
+    borderWidth: 1.5,
+  },
   dateSelected: {
     backgroundColor: color.gulchGreen,
   },
   dateLabel: {
     color: color.white,
-    fontFamily: font.bold,
-    fontSize: 24,
-    letterSpacing: -0.24,
-    lineHeight: 30,
+    fontFamily: font.medium,
+    fontSize: 16,
+    lineHeight: 24,
     textAlign: "center",
   },
   dateLabelSelected: {
     color: color.oreo,
+    fontFamily: font.bold,
   },
   dateLabelMuted: {
     color: color.grey80,

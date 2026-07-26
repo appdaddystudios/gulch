@@ -1,8 +1,9 @@
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Pressable,
   SectionList,
@@ -10,17 +11,27 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "../../components/Button";
 import { DatePicker } from "../../components/DatePicker";
+import { DayStepper } from "../../components/DayStepper";
 import { EmptyState } from "../../components/EmptyState";
 import { EventCard } from "../../components/EventCard";
 import { Header } from "../../components/Header";
-import { FileQuestionIcon } from "../../components/icons";
+import { IconButton } from "../../components/IconButton";
+import { FileQuestionIcon, SearchIcon } from "../../components/icons";
 import { SearchBar } from "../../components/SearchBar";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
-import { addMonths, type MonthCursor } from "../../lib/calendar";
+import {
+  addDaysToKey,
+  addMonths,
+  dayTitle,
+  monthCursorFromKey,
+  type MonthCursor,
+} from "../../lib/calendar";
 import {
   groupEventsByWeek,
   listUpcomingEvents,
@@ -29,12 +40,21 @@ import {
 } from "../../lib/events";
 import { dayKey } from "../../lib/format";
 import { captureEvent } from "../../lib/telemetry";
-import { color, font, radius, space, type as typePreset } from "../../theme";
+import { color, font, space, type as typePreset } from "../../theme";
 
-type ViewMode = "list" | "calendar";
+type ViewMode = "list" | "month" | "week";
 
 // Debounce so search_performed reflects settled queries, not every keystroke.
 const SEARCH_CAPTURE_DELAY_MS = 1000;
+// Past this offset the list-mode search bar is fully collapsed into the
+// header icon (V3: the segmented control below it stays stuck in place).
+const SEARCH_COLLAPSE_RANGE = 96;
+
+const MODE_SEGMENTS = [
+  { key: "month", label: "Month" },
+  { key: "week", label: "Week" },
+  { key: "list", label: "List" },
+] as const;
 
 const loadEvents = (client: Parameters<typeof listUpcomingEvents>[0]) =>
   listUpcomingEvents(client, { limit: 100 });
@@ -46,18 +66,33 @@ const matchesQuery = (event: EventListItem, query: string): boolean =>
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const client = useDbClient();
   const loader = useCallback(loadEvents, []);
   const { state } = useQuery(client, loader);
   const { isSaved, toggle } = useSavedEvents();
 
+  const todayKey = useMemo(() => dayKey(new Date().toISOString()), []);
   const [mode, setMode] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
-  const [cursor, setCursor] = useState<MonthCursor>(() => {
-    const now = new Date();
-    return { year: now.getFullYear(), monthIndex: now.getMonth() };
+  const [cursor, setCursor] = useState<MonthCursor>(() =>
+    monthCursorFromKey(todayKey),
+  );
+  const [selectedKey, setSelectedKey] = useState<string>(todayKey);
+  const [headerSearch, setHeaderSearch] = useState(false);
+
+  const listRef = useRef<SectionList<EventListItem, EventWeekSection>>(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const searchHeight = scrollY.interpolate({
+    inputRange: [0, SEARCH_COLLAPSE_RANGE],
+    outputRange: [56, 0],
+    extrapolate: "clamp",
   });
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const searchOpacity = scrollY.interpolate({
+    inputRange: [0, SEARCH_COLLAPSE_RANGE * 0.7],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
 
   const events = state.status === "ready" ? state.data : [];
   const filtered = useMemo(() => {
@@ -73,10 +108,7 @@ export default function CalendarScreen() {
     [filtered],
   );
   const dayEvents = useMemo(
-    () =>
-      selectedKey
-        ? filtered.filter((event) => dayKey(event.startAt) === selectedKey)
-        : [],
+    () => filtered.filter((event) => dayKey(event.startAt) === selectedKey),
     [filtered, selectedKey],
   );
 
@@ -101,6 +133,31 @@ export default function CalendarScreen() {
     setMode(value);
   };
 
+  const goToday = () => {
+    setCursor(monthCursorFromKey(todayKey));
+    setSelectedKey(todayKey);
+  };
+
+  const selectDay = (key: string) => {
+    setSelectedKey(key);
+    setCursor(monthCursorFromKey(key));
+  };
+
+  const stepDay = (delta: number) => selectDay(addDaysToKey(selectedKey, delta));
+
+  const revealSearch = () => {
+    if (sections.length > 0) {
+      listRef.current?.scrollToLocation({
+        animated: true,
+        itemIndex: 0,
+        sectionIndex: 0,
+        viewOffset: 0,
+      });
+    }
+    scrollY.setValue(0);
+    setHeaderSearch(false);
+  };
+
   const openEvent = (event: EventListItem) =>
     router.push(`/event/${event.id}?source=calendar`);
   const renderCard = (item: EventListItem) => (
@@ -112,77 +169,156 @@ export default function CalendarScreen() {
     />
   );
 
+  const segmented = (
+    <SegmentedControl segments={MODE_SEGMENTS} value={mode} onChange={switchMode} />
+  );
+
+  if (mode !== "list") {
+    return (
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <View style={styles.controlBar}>
+          {segmented}
+          <View style={styles.controlRight}>
+            <Button label="Today" size="s" tone="outline" onPress={goToday} />
+            <IconButton
+              accessibilityLabel="Search events"
+              onPress={() => switchMode("list")}
+            >
+              <SearchIcon size={20} color={color.khakis} />
+            </IconButton>
+          </View>
+        </View>
+
+        {state.status !== "ready" ? (
+          <StatusView state={state} />
+        ) : (
+          <FlatList
+            contentContainerStyle={styles.listContent}
+            data={dayEvents}
+            keyExtractor={(item) => item.id}
+            ListHeaderComponent={
+              <View style={styles.calendarHeader}>
+                <DatePicker
+                  cursor={cursor}
+                  selectedKey={selectedKey}
+                  eventDayKeys={eventDayKeys}
+                  weekAnchor={mode === "week" ? selectedKey : undefined}
+                  onPrev={() =>
+                    mode === "week"
+                      ? stepDay(-7)
+                      : setCursor((c) => addMonths(c, -1))
+                  }
+                  onNext={() =>
+                    mode === "week"
+                      ? stepDay(7)
+                      : setCursor((c) => addMonths(c, 1))
+                  }
+                  onSelectDay={selectDay}
+                />
+                <View style={styles.stepperRule} />
+                <DayStepper
+                  label={dayTitle(selectedKey)}
+                  onPrev={() => stepDay(-1)}
+                  onNext={() => stepDay(1)}
+                />
+              </View>
+            }
+            renderItem={({ item }) => <>{renderCard(item)}</>}
+            ItemSeparatorComponent={Separator}
+            ListEmptyComponent={
+              <Text style={styles.hint}>No events on this day.</Text>
+            }
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.screen}>
-      <Header />
+      <Header
+        rightAction={
+          headerSearch ? (
+            <Pressable
+              accessibilityLabel="Search events"
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={revealSearch}
+            >
+              <SearchIcon size={24} color={color.khakis} />
+            </Pressable>
+          ) : undefined
+        }
+      />
       <View style={styles.controls}>
-        <SearchBar value={search} onChangeText={setSearch} />
-        <Toggle mode={mode} onChange={switchMode} />
+        <Animated.View
+          style={[
+            styles.searchWrap,
+            { height: searchHeight, opacity: searchOpacity },
+          ]}
+        >
+          <SearchBar value={search} onChangeText={setSearch} />
+        </Animated.View>
+        {segmented}
       </View>
 
       {state.status !== "ready" ? (
         <StatusView state={state} />
-      ) : mode === "list" ? (
-        <ListView
-          sections={sections}
-          hasSearch={search.trim().length > 0}
-          onClear={() => setSearch("")}
-          renderCard={renderCard}
-        />
+      ) : sections.length === 0 ? (
+        search.trim().length > 0 ? (
+          <EmptyState
+            align="top"
+            icon={<FileQuestionIcon size={32} color={color.gulchGreen} />}
+            title="No results"
+            subtitle="Please try your search again using different terms."
+            action={
+              <Button
+                label="Clear Search"
+                tone="light"
+                onPress={() => setSearch("")}
+              />
+            }
+          />
+        ) : (
+          <Centered>
+            <EmptyState
+              title="No upcoming events"
+              subtitle="Check back soon for new events."
+            />
+          </Centered>
+        )
       ) : (
-        <CalendarView
-          cursor={cursor}
-          selectedKey={selectedKey}
-          eventDayKeys={eventDayKeys}
-          dayEvents={dayEvents}
-          onPrev={() => {
-            setCursor((c) => addMonths(c, -1));
-            setSelectedKey(null);
-          }}
-          onNext={() => {
-            setCursor((c) => addMonths(c, 1));
-            setSelectedKey(null);
-          }}
-          onSelectDay={(key) =>
-            setSelectedKey((prev) => (prev === key ? null : key))
-          }
-          renderCard={renderCard}
+        <SectionList
+          ref={listRef}
+          contentContainerStyle={styles.listContent}
+          sections={sections as EventWeekSection[]}
+          keyExtractor={(item) => item.id}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            {
+              useNativeDriver: false,
+              listener: (event) => {
+                const offset = (
+                  event as { nativeEvent: { contentOffset: { y: number } } }
+                ).nativeEvent.contentOffset.y;
+                setHeaderSearch(offset > SEARCH_COLLAPSE_RANGE / 2);
+              },
+            },
+          )}
+          scrollEventThrottle={16}
+          renderItem={({ item }) => <>{renderCard(item)}</>}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <View style={styles.sectionRule} />
+            </View>
+          )}
+          ItemSeparatorComponent={Separator}
+          stickySectionHeadersEnabled={false}
+          showsVerticalScrollIndicator={false}
         />
       )}
-    </View>
-  );
-}
-
-function Toggle({
-  mode,
-  onChange,
-}: {
-  readonly mode: ViewMode;
-  readonly onChange: (mode: ViewMode) => void;
-}) {
-  return (
-    <View style={styles.toggle}>
-      {(["list", "calendar"] as const).map((value) => {
-        const active = mode === value;
-        return (
-          <Pressable
-            key={value}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            onPress={() => onChange(value)}
-            style={[styles.toggleButton, active ? styles.toggleActive : null]}
-          >
-            <Text
-              style={[
-                styles.toggleLabel,
-                active ? styles.toggleLabelActive : null,
-              ]}
-            >
-              {value === "list" ? "List" : "Calendar"}
-            </Text>
-          </Pressable>
-        );
-      })}
     </View>
   );
 }
@@ -216,105 +352,6 @@ function StatusView({
   );
 }
 
-function ListView({
-  sections,
-  hasSearch,
-  onClear,
-  renderCard,
-}: {
-  readonly sections: readonly EventWeekSection[];
-  readonly hasSearch: boolean;
-  readonly onClear: () => void;
-  readonly renderCard: (item: EventListItem) => ReactNode;
-}) {
-  if (sections.length === 0) {
-    return hasSearch ? (
-      <EmptyState
-        align="top"
-        icon={<FileQuestionIcon size={32} color={color.gulchGreen} />}
-        title="No results"
-        subtitle="Please try your search again using different terms."
-        action={<Button label="Clear Search" tone="light" onPress={onClear} />}
-      />
-    ) : (
-      <Centered>
-        <EmptyState
-          title="No upcoming events"
-          subtitle="Check back soon for new events."
-        />
-      </Centered>
-    );
-  }
-
-  return (
-    <SectionList
-      contentContainerStyle={styles.listContent}
-      sections={sections as EventWeekSection[]}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <>{renderCard(item)}</>}
-      renderSectionHeader={({ section }) => (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{section.title}</Text>
-          <View style={styles.sectionRule} />
-        </View>
-      )}
-      ItemSeparatorComponent={Separator}
-      stickySectionHeadersEnabled={false}
-      showsVerticalScrollIndicator={false}
-    />
-  );
-}
-
-function CalendarView({
-  cursor,
-  selectedKey,
-  eventDayKeys,
-  dayEvents,
-  onPrev,
-  onNext,
-  onSelectDay,
-  renderCard,
-}: {
-  readonly cursor: MonthCursor;
-  readonly selectedKey: string | null;
-  readonly eventDayKeys: ReadonlySet<string>;
-  readonly dayEvents: readonly EventListItem[];
-  readonly onPrev: () => void;
-  readonly onNext: () => void;
-  readonly onSelectDay: (key: string) => void;
-  readonly renderCard: (item: EventListItem) => ReactNode;
-}) {
-  return (
-    <FlatList
-      contentContainerStyle={styles.listContent}
-      data={selectedKey ? dayEvents : []}
-      keyExtractor={(item) => item.id}
-      ListHeaderComponent={
-        <View style={styles.calendarHeader}>
-          <DatePicker
-            cursor={cursor}
-            selectedKey={selectedKey}
-            eventDayKeys={eventDayKeys}
-            onPrev={onPrev}
-            onNext={onNext}
-            onSelectDay={onSelectDay}
-          />
-        </View>
-      }
-      renderItem={({ item }) => <>{renderCard(item)}</>}
-      ItemSeparatorComponent={Separator}
-      ListEmptyComponent={
-        <Text style={styles.hint}>
-          {selectedKey
-            ? "No events on this day."
-            : "Tap a highlighted day to see its events."}
-        </Text>
-      }
-      showsVerticalScrollIndicator={false}
-    />
-  );
-}
-
 function Centered({ children }: { readonly children: ReactNode }) {
   return <View style={styles.centered}>{children}</View>;
 }
@@ -329,32 +366,25 @@ const styles = StyleSheet.create({
     backgroundColor: color.oreo,
     flex: 1,
   },
+  controlBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+  },
+  controlRight: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: space.md,
+  },
   controls: {
     gap: space.md,
     paddingHorizontal: space.md,
     paddingVertical: space.md,
   },
-  toggle: {
-    alignSelf: "flex-start",
-    backgroundColor: color.brown400,
-    borderRadius: radius.pill,
-    flexDirection: "row",
-    padding: space.xs,
-  },
-  toggleButton: {
-    borderRadius: radius.pill,
-    paddingHorizontal: space.xl,
-    paddingVertical: space.sm,
-  },
-  toggleActive: {
-    backgroundColor: color.beige300,
-  },
-  toggleLabel: {
-    ...typePreset.captionMedium12,
-    color: color.khakis,
-  },
-  toggleLabelActive: {
-    color: color.oreo,
+  searchWrap: {
+    overflow: "hidden",
   },
   listContent: {
     paddingBottom: space.xxl,
@@ -362,6 +392,11 @@ const styles = StyleSheet.create({
   },
   calendarHeader: {
     paddingBottom: space.lg,
+  },
+  stepperRule: {
+    backgroundColor: color.brown300,
+    height: 1,
+    marginVertical: space.lg,
   },
   hint: {
     ...typePreset.caption12,
