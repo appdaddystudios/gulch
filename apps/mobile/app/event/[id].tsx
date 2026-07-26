@@ -12,16 +12,18 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Button } from "../../components/Button";
+import { Badge } from "../../components/Badge";
 import { EmptyState } from "../../components/EmptyState";
 import { Header } from "../../components/Header";
+import { Toast } from "../../components/Toast";
 import { WebView } from "react-native-webview";
 
 import {
-  BookmarkIcon,
   CloseIcon,
   DotsHorizontalIcon,
   GulchLogo,
+  HeartIcon,
+  LinkIcon,
   MarkerPinIcon,
   PlayIcon,
   ShareIcon,
@@ -32,6 +34,7 @@ import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { getEventDetail, type EventDetail } from "../../lib/events";
 import { instagramEmbedUrl } from "../../lib/instagramEmbed";
 import { openLink } from "../../lib/openLink";
+import { recordRecentlyViewed } from "../../lib/recentlyViewed";
 import { captureEvent } from "../../lib/telemetry";
 import { formatEventDateTime } from "../../lib/format";
 import { color, font, radius, space, type as typePreset } from "../../theme";
@@ -61,6 +64,7 @@ export default function EventDetailScreen() {
         event_name: state.data.name,
         source: source ?? null,
       });
+      void recordRecentlyViewed(state.data.id);
     }
   }, [state, source]);
 
@@ -115,6 +119,7 @@ function Content({
   const { isSaved, toggle } = useSavedEvents();
   const [heroImageFailed, setHeroImageFailed] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
 
   if (state.status === "loading") {
     return (
@@ -155,6 +160,12 @@ function Content({
   }
 
   const event = state.data;
+  const externalHref = event.externalLink;
+  // Distinct context from the header share icon so link_opened attributes the
+  // "More Information" surface correctly.
+  const openExternal = (url: string) => {
+    void openLink(url, "event_more_information");
+  };
   // Any stored image renders — a transient pipeline status ("pending"/"failed"
   // after a re-mark) must not hide a previously good rehosted image.
   const hasImage = Boolean(event.imageUrl) && !heroImageFailed;
@@ -217,6 +228,11 @@ function Content({
                 pointerEvents="none"
                 style={StyleSheet.absoluteFill}
               />
+              {event.editorsPick ? (
+                <View style={styles.heroBadge}>
+                  <Badge label="Editor's Pick" variant="editorsPick" />
+                </View>
+              ) : null}
               {embedUrl ? (
                 <Pressable
                   accessibilityLabel="Watch video"
@@ -236,36 +252,48 @@ function Content({
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.date}>
-            {formatEventDateTime(event.startAt, {
-              endAt: event.endAt,
-              customTimeDescription: event.customTimeDescription,
-            })}
-          </Text>
+          <View style={styles.datePill}>
+            <Text style={styles.date}>
+              {formatEventDateTime(event.startAt, {
+                endAt: event.endAt,
+                customTimeDescription: event.customTimeDescription,
+              })}
+            </Text>
+          </View>
           <Text style={styles.title}>{event.name}</Text>
 
-          {event.organizerName || event.locationName ? (
-            <View style={styles.metaRow}>
-              {event.organizerName ? (
-                <Text style={styles.org}>{event.organizerName}</Text>
-              ) : null}
-              {event.locationName ? (
-                <View style={styles.location}>
-                  <MarkerPinIcon size={16} color={color.khakis} />
-                  <Text style={styles.locationText}>{event.locationName}</Text>
-                </View>
-              ) : null}
+          {externalHref ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => openExternal(externalHref)}
+              style={({ pressed }) => [
+                styles.moreInfo,
+                pressed ? styles.watchPressed : null,
+              ]}
+            >
+              <LinkIcon size={16} color={color.white} />
+              <Text style={styles.moreInfoLabel}>More Information</Text>
+            </Pressable>
+          ) : null}
+
+          {event.organizerName ? (
+            <View style={styles.organizedBy}>
+              <Text style={styles.organizedByLabel}>Organized by</Text>
+              <Text style={styles.org}>{event.organizerName}</Text>
+            </View>
+          ) : null}
+
+          {event.locationName ? (
+            <View style={styles.location}>
+              <MarkerPinIcon size={16} color={color.khakis} />
+              <Text style={styles.locationText}>{event.locationName}</Text>
             </View>
           ) : null}
 
           {event.ticketsRequired ? (
-            <View style={styles.rsvp}>
-              <Button
-                label="RSVP Required"
-                size="m"
-                tone="outline"
-                leftIcon={<TicketIcon size={16} color={color.white} />}
-              />
+            <View style={styles.location}>
+              <TicketIcon size={16} color={color.khakis} />
+              <Text style={styles.locationText}>RSVP Required</Text>
             </View>
           ) : null}
         </View>
@@ -279,24 +307,40 @@ function Content({
       >
         <Pressable
           accessibilityLabel={
-            isSaved(event.id)
-              ? "Remove from Your Lineup"
-              : "Save to Your Lineup"
+            isSaved(event.id) ? "Remove from Favorites" : "Add to Favorites"
           }
           accessibilityRole="button"
           accessibilityState={{ selected: isSaved(event.id) }}
-          onPress={() => toggle(event.id)}
+          onPress={() => {
+            const adding = !isSaved(event.id);
+            toggle(event.id);
+            if (adding) {
+              setToastVisible(true);
+            }
+          }}
           style={({ pressed }) => [
-            styles.saveButton,
+            isSaved(event.id) ? styles.savedButton : styles.saveButton,
             pressed ? styles.saved : null,
           ]}
         >
-          <BookmarkIcon size={16} color={color.oreo} />
-          <Text style={styles.saveLabel}>
-            {isSaved(event.id) ? "Saved to Your Lineup" : "Save to Your Lineup"}
+          <HeartIcon
+            size={18}
+            color={isSaved(event.id) ? color.gulchGreen : color.oreo}
+            filled={isSaved(event.id)}
+          />
+          <Text
+            style={isSaved(event.id) ? styles.savedLabel : styles.saveLabel}
+          >
+            {isSaved(event.id) ? "Added to Favorites" : "Add to Favorites"}
           </Text>
         </Pressable>
       </View>
+
+      <Toast
+        message="Added to your favorites"
+        visible={toastVisible}
+        onDismiss={() => setToastVisible(false)}
+      />
     </View>
   );
 }
@@ -385,6 +429,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.xl,
     paddingTop: space.xxl,
   },
+  heroBadge: {
+    bottom: space.xl,
+    left: space.xl,
+    position: "absolute",
+  },
+  datePill: {
+    alignSelf: "flex-start",
+    backgroundColor: color.darkChocolate,
+    borderColor: color.oreo,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+  },
   date: {
     ...typePreset.caption12,
     color: color.khakis,
@@ -396,11 +454,27 @@ const styles = StyleSheet.create({
     ...typePreset.h24Bold,
     color: color.white,
   },
-  metaRow: {
+  moreInfo: {
     alignItems: "center",
+    alignSelf: "flex-start",
+    borderColor: color.khakis,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space.xl,
+    gap: space.sm,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.md,
+  },
+  moreInfoLabel: {
+    ...typePreset.bodyBold14,
+    color: color.white,
+  },
+  organizedBy: {
+    gap: space.xxs,
+  },
+  organizedByLabel: {
+    ...typePreset.bodyBold14,
+    color: color.white,
   },
   org: {
     color: color.khakis,
@@ -411,14 +485,11 @@ const styles = StyleSheet.create({
   location: {
     alignItems: "center",
     flexDirection: "row",
-    gap: space.xxs,
+    gap: space.sm,
   },
   locationText: {
     ...typePreset.body16,
     color: color.khakis,
-  },
-  rsvp: {
-    alignItems: "flex-start",
   },
   stickyButtons: {
     backgroundColor: color.oreo,
@@ -443,12 +514,29 @@ const styles = StyleSheet.create({
     elevation: 2,
     width: "100%",
   },
+  savedButton: {
+    alignItems: "center",
+    backgroundColor: color.darkChocolate,
+    borderColor: color.oreo,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: space.sm,
+    height: 48,
+    justifyContent: "center",
+    width: "100%",
+  },
   saved: {
     opacity: 0.7,
   },
   saveLabel: {
     ...typePreset.body16,
     color: color.oreo,
+    fontFamily: font.medium,
+  },
+  savedLabel: {
+    ...typePreset.body16,
+    color: color.khakis,
     fontFamily: font.medium,
   },
 });

@@ -11,7 +11,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="calendar" />
       <Tabs.Screen name="map" />
-      <Tabs.Screen name="lineup" />
+      <Tabs.Screen name="favorites" />
       <Tabs.Screen name="newsletter" />
     </Tabs>
   );

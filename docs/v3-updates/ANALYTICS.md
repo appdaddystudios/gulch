@@ -16,20 +16,20 @@
 ## Automatic events
 
 - `Application Installed` / `Application Updated` / `Application Opened` / `Application Backgrounded` — PostHog lifecycle capture
-- `$screen` with `$screen_name` = router pathname (e.g. `/`, `/calendar`, `/map`, `/newsletter`, `/lineup`, `/event/{id}`)
+- `$screen` with `$screen_name` = router pathname (e.g. `/`, `/calendar`, `/map`, `/newsletter`, `/favorites`, `/event/{id}`) — `/favorites` replaced `/lineup` in the V3 redesign (2026-07)
 
 ## Named event taxonomy
 
 | Event | Properties | Fired from |
 |---|---|---|
-| `event_viewed` | `event_id`, `event_name`, `source` (`home` \| `calendar` \| `map` \| `lineup` \| `null` for deep links) | `app/event/[id].tsx` once per successful load |
+| `event_viewed` | `event_id`, `event_name`, `source` (`home` \| `calendar` \| `map` \| `favorites` \| `null` for deep links; `lineup` in pre-V3 data) | `app/event/[id].tsx` once per successful load |
 | `event_saved` / `event_unsaved` | `event_id` | `hooks/useSavedEvents.tsx` toggle |
-| `link_opened` | `domain` (hostname only), `context` (`organizer_instagram` \| `research_banner` \| `event_share` \| `null`) | `lib/openLink.ts` — every external link |
+| `link_opened` | `domain` (hostname only), `context` (`organizer_instagram` \| `research_banner` \| `event_share` \| `event_more_information` \| `banner_ad` \| `null`) | `lib/openLink.ts` — every external link |
 | `search_performed` | `query_length`, `result_count` (never the query text) | Calendar search, debounced 1s |
 | `map_opened` | — | Map tab mount |
 | `map_pin_tapped` | `venue_id`, `venue_name`, `event_count` | Venue pin select (not deselect) |
 | `newsletter_viewed` | — | Newsletter tab mount |
-| `calendar_view_toggled` | `mode` (`list` \| `calendar`) | Calendar toggle, only on actual change |
+| `calendar_view_toggled` | `mode` (`month` \| `week` \| `list`; `calendar` in pre-V3 data) | Calendar segmented control, only on actual change |
 | `survey_banner_tapped` | — | Home research banner button (also emits `link_opened`) |
 | `video_played` | `event_id` | Event details "Watch video" tap (Instagram embed player) |
 | `banner_ad_tapped` | `kind` (`image` \| `text`) | Home banner-ad slot tap (link domain arrives via `link_opened`) |
