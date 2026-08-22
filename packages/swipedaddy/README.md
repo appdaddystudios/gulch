@@ -50,5 +50,12 @@ place. `cancelPendingResets` used to replace the array, leaving the unmount
 cleanup holding an empty one while live stagger timers kept the JS thread
 awake for up to `(count - 1) * 100ms` after unmount.
 
-Upstream all four into swipeDaddy and re-vendor at the next tag to drop this
+`src/SwipeableCard.tsx`, commit timing: a gesture commit runs the exit
+animation and advances `activeIndex` on the UI thread, scheduling only the
+consumer notification onto JS. Advancing inside the scheduled callback left
+the card active while the JS thread was busy, so a second gesture could grab
+an already-committed card, fail the commit check, and spring the discarded
+card back over the real active one.
+
+Upstream all five into swipeDaddy and re-vendor at the next tag to drop this
 note.
