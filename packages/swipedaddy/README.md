@@ -21,11 +21,19 @@ writable" at startup). `apps/mobile` installs the SDK-matched versions via
 
 ## Local divergence from upstream
 
-`src/SwipeableCard.tsx` carries one fix that is not yet in the upstream tag
-(review finding on PR #38): the pan gesture now clears `nextActiveIndex` in
+Two review findings from PR #38 are fixed here but not yet in the upstream
+tag.
+
+`src/SwipeableCard.tsx`: the pan gesture now clears `nextActiveIndex` in
 `onBegin` and ignores a finalize with zero translation. Without it a gesture
 that never reaches `onUpdate` (a tap, or a pan that fails the activation
 offset) is finalized against a stale commit threshold left by an earlier
 gated swipe or `reset()`, and `Math.sign(0)` falls through the left branch —
 advancing the deck on a tap. Upstream this into swipeDaddy and re-vendor at
 the next tag to drop this note.
+
+`src/use-swipe-controls.ts` / `src/SwipeDeck.tsx`: the staggered `reset()`
+timers are now cancelled whenever a swipe commits. A pending stagger that
+fired mid-exit called `reset()` on the card being discarded, cancelling its
+exit animation and springing it back to the centre while `activeIndex` had
+already advanced.

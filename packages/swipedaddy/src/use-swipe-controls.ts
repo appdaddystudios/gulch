@@ -27,8 +27,19 @@ export function useCardRefs(count: number) {
 
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  const cancelPendingResets = useCallback(() => {
+    timeouts.current.forEach(timeout => {
+      clearTimeout(timeout);
+    });
+    timeouts.current = [];
+  }, []);
+
   const resetCards = useCallback(() => {
     // Reset all cards in the opposite direction with a delay (demo behavior).
+    // Drop any stagger still in flight first: a pending reset that fires after
+    // a new swipe would cancel that card's exit animation and spring an
+    // already-discarded card back to the centre while activeIndex stays put.
+    cancelPendingResets();
     refs.forEach((ref, index) => {
       timeouts.current.push(
         setTimeout(() => {
@@ -36,7 +47,7 @@ export function useCardRefs(count: number) {
         }, index * RESET_STAGGER_MS),
       );
     });
-  }, [refs]);
+  }, [cancelPendingResets, refs]);
 
   useEffect(() => {
     const pending = timeouts.current;
@@ -50,5 +61,6 @@ export function useCardRefs(count: number) {
   return {
     refs,
     resetCards,
+    cancelPendingResets,
   };
 }
