@@ -8,8 +8,6 @@ import {
   resetTelemetryForTest
 } from "./telemetry";
 
-const sentryInit = vi.hoisted(() => vi.fn());
-const sentryCaptureException = vi.hoisted(() => vi.fn());
 const posthogCapture = vi.hoisted(() => vi.fn());
 const posthogScreen = vi.hoisted(() => vi.fn());
 const posthogConstructor = vi.hoisted(() =>
@@ -20,11 +18,6 @@ const posthogConstructor = vi.hoisted(() =>
     };
   })
 );
-
-vi.mock("@sentry/react-native", () => ({
-  init: sentryInit,
-  captureException: sentryCaptureException
-}));
 
 vi.mock("posthog-react-native", () => ({
   PostHog: posthogConstructor
@@ -75,7 +68,6 @@ describe("telemetry", () => {
 
   it("initializes and captures when telemetry env is present", async () => {
     await initTelemetry({
-      sentryDsn: "https://public@example.com/1",
       posthogKey: "ph_test",
       posthogHost: "https://us.i.posthog.com"
     });
@@ -85,8 +77,10 @@ describe("telemetry", () => {
     captureEvent("mobile_test", { count: 1, ok: true });
     captureScreen("/event/evt-1");
 
-    expect(sentryInit).toHaveBeenCalledWith({ dsn: "https://public@example.com/1" });
-    expect(sentryCaptureException).toHaveBeenCalledWith(error);
+    expect(posthogCapture).toHaveBeenCalledWith("$exception", {
+      $exception_message: "reported",
+      $exception_type: "Error"
+    });
     expect(posthogConstructor).toHaveBeenCalledWith("ph_test", {
       host: "https://us.i.posthog.com",
       captureAppLifecycleEvents: true

@@ -1,12 +1,10 @@
 type TelemetryEnv = {
-  readonly sentryDsn?: string;
   readonly posthogKey?: string;
   readonly posthogHost?: string;
 };
 type TelemetryProperty = string | number | boolean | null | TelemetryProperty[] | { [key: string]: TelemetryProperty };
 type TelemetryProperties = Record<string, TelemetryProperty>;
 
-type SentryModule = typeof import("@sentry/react-native");
 type PostHogModule = typeof import("posthog-react-native");
 type PostHogClient = InstanceType<PostHogModule["PostHog"]>;
 
@@ -20,7 +18,6 @@ type PendingCapture =
 // grow the queue forever.
 const MAX_PENDING_CAPTURES = 100;
 
-let sentry: SentryModule | null = null;
 let posthog: PostHogClient | null = null;
 let initialized = false;
 let initSettled = false;
@@ -30,7 +27,6 @@ const hasValue = (value: string | undefined): value is string => typeof value ==
 
 export const initTelemetry = async (
   env: TelemetryEnv = {
-    sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
     posthogKey: process.env.EXPO_PUBLIC_POSTHOG_KEY,
     posthogHost: process.env.EXPO_PUBLIC_POSTHOG_HOST
   }
@@ -41,13 +37,7 @@ export const initTelemetry = async (
 
   initialized = true;
 
-  const sentryDsn = env.sentryDsn;
   const posthogKey = env.posthogKey;
-
-  if (hasValue(sentryDsn)) {
-    sentry = await import("@sentry/react-native");
-    sentry.init({ dsn: sentryDsn });
-  }
 
   if (hasValue(posthogKey)) {
     const posthogModule = await import("posthog-react-native");
@@ -70,9 +60,6 @@ export const initTelemetry = async (
   pending = [];
 };
 
-export const captureException = (error: unknown): void => {
-  sentry?.captureException(error);
-};
 
 const buffer = (item: PendingCapture): void => {
   if (!initSettled && pending.length < MAX_PENDING_CAPTURES) {
@@ -88,6 +75,14 @@ export const captureEvent = (event: string, properties?: TelemetryProperties): v
   buffer({ kind: "event", event, properties });
 };
 
+// Errors go to PostHog as `$exception` events (its error-tracking event name)
+// so failures stay visible without a second vendor.
+export const captureException = (error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error);
+  const type = error instanceof Error ? error.name : "Error";
+  captureEvent("$exception", { $exception_message: message, $exception_type: type });
+};
+
 // Screen views use PostHog's dedicated $screen semantics (expo-router has no
 // built-in autocapture hook, so the root layout reports pathname changes).
 export const captureScreen = (name: string): void => {
@@ -99,7 +94,6 @@ export const captureScreen = (name: string): void => {
 };
 
 export const resetTelemetryForTest = (): void => {
-  sentry = null;
   posthog = null;
   initialized = false;
   initSettled = false;
