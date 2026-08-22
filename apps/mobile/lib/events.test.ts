@@ -4,6 +4,7 @@ import {
   EVENT_SELECT,
   getEventDetail,
   groupEventsByWeek,
+  DECK_FETCH_MAX,
   listDeckEvents,
   listEventsByIds,
   listTrendingEvents,
@@ -290,6 +291,22 @@ describe("listDeckEvents", () => {
       ["order", "start_at", { ascending: true }],
       ["limit", 7],
     ]);
+  });
+
+  it("fetches past the ids the deck will exclude", async () => {
+    const { client, calls } = makeRecordingClient({ data: [], error: null });
+
+    await listDeckEvents(client, { limit: 20, excludeCount: 15 });
+
+    expect(calls).toContainEqual(["limit", 35]);
+  });
+
+  it("caps the over-fetch at DECK_FETCH_MAX", async () => {
+    const { client, calls } = makeRecordingClient({ data: [], error: null });
+
+    await listDeckEvents(client, { limit: 20, excludeCount: 5000 });
+
+    expect(calls).toContainEqual(["limit", DECK_FETCH_MAX]);
   });
 
   it("defaults to a limit of 20 and the current time", async () => {

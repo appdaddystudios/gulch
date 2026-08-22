@@ -67,11 +67,14 @@ const TRENDING_LIMIT = 6;
 const loadHome = async (
   client: Parameters<typeof listUpcomingEvents>[0],
   extraIds: readonly string[],
+  // The deck reducer drops saved ids client-side, so the query has to reach
+  // past them or a returning user gets a short deck.
+  savedCount: number,
 ): Promise<HomeData> => {
   const [events, ranked, deck, extra, organizers, config] = await Promise.all([
     listUpcomingEvents(client, { limit: 12 }),
     listTrendingEvents(client, { limit: TRENDING_LIMIT }),
-    listDeckEvents(client, { limit: DECK_CAP }),
+    listDeckEvents(client, { limit: DECK_CAP, excludeCount: savedCount }),
     extraIds.length > 0 ? listEventsByIds(client, extraIds) : Promise.resolve([]),
     listFeaturedOrganizers(client, { limit: 9 }),
     getHomeConfig(client),
@@ -122,7 +125,7 @@ export default function HomeScreen() {
   const recentKey = recentIds.join(",");
   const loader = useCallback(
     (c: Parameters<typeof listUpcomingEvents>[0]) =>
-      loadHome(c, [...new Set([...savedList, ...recentIds])]),
+      loadHome(c, [...new Set([...savedList, ...recentIds])], savedIds.size),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [savedKey, recentKey],
   );
