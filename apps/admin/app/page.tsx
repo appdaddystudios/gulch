@@ -2,6 +2,7 @@ import { BannerAdCard } from "@/components/BannerAdCard";
 import { FeaturedOrganizersCard } from "@/components/FeaturedOrganizersCard";
 import { ResearchCard } from "@/components/ResearchCard";
 import { SponsoredEventsCard } from "@/components/SponsoredEventsCard";
+import { requireAdmin } from "@/lib/auth";
 import { getFeaturedState, type FeaturedState } from "@/lib/featured";
 import { getHomepageConfig, type HomepageConfig } from "@/lib/homeContent";
 import { getSponsorableEvents, type SponsorableEvent } from "@/lib/sponsoredEvents";
@@ -66,6 +67,7 @@ const countCards = [
 ] as const;
 
 export default async function AdminPage() {
+  await requireAdmin();
   const state = await loadDashboardState();
 
   return (
