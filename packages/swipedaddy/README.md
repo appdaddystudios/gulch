@@ -60,9 +60,10 @@ card back over the real active one.
 `src/SwipeableCard.tsx`, imperative order and resize: `swipeLeft()` /
 `swipeRight()` run the transition before notifying the consumer (a callback
 that calls another deck control was otherwise undone by the advance landing
-after it), and a card that has already exited is re-projected when the window
-widens (its old exit distance could leave it visible and swallowing touches
-meant for the active card).
+after it), and a card that has actually exited (tracked explicitly, not inferred from a
+nonzero translation) is re-projected when the window widens — its old exit
+distance could otherwise leave it visible and swallowing touches meant for the
+active card.
 
 Upstream all six into swipeDaddy and re-vendor at the next tag to drop this
 note.
