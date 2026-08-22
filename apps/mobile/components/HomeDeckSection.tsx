@@ -95,6 +95,7 @@ export function HomeDeckSection({
     : `Event deck, ${deck.remaining} to go`;
 
   const onAccessibilityAction = (event: AccessibilityActionEvent) => {
+    if (!deck.interactive) return;
     const action = event.nativeEvent.actionName;
     if (action === "activate") {
       if (deck.top) {
@@ -113,7 +114,11 @@ export function HomeDeckSection({
       accessibilityActions={A11Y_ACTIONS}
       accessibilityHint="Swipe right to save, left to skip, double tap to open"
       accessibilityLabel={label}
+      accessibilityState={{ busy: !deck.interactive }}
       onAccessibilityAction={onAccessibilityAction}
+      // Inert while an untouched deck awaits its saved-aware page (see
+      // useHomeDeck.interactive); the cards stay visible so nothing flashes.
+      pointerEvents={deck.interactive ? "auto" : "none"}
       style={[styles.deck, { height }]}
     >
       <SwipeDeck<DeckEntry>

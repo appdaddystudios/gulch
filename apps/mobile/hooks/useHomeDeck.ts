@@ -166,6 +166,11 @@ export function useHomeDeck(
     entries: state.entries,
     deckKey: state.deckKey,
     dealt: dealtRef.current,
+    // An untouched deck whose saved-aware page is still in flight is shown but
+    // inert: a swipe there would freeze a deck reconciled from the old page
+    // before its replacement rows arrive. Once touched, the session is frozen
+    // by design and stays interactive.
+    interactive: ready || touchedRef.current,
     top: topEntry(state),
     remaining: remainingOf(state),
     onSwipeLeft,
