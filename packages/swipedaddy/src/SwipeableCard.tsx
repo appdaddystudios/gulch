@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useImperativeHandle,
-  useMemo,
-  type ReactNode,
-  type Ref,
-} from 'react';
+import { type ReactNode, type Ref, useCallback, useEffect, useImperativeHandle, useMemo } from 'react';
 import {
   StyleSheet,
   useWindowDimensions,
@@ -82,16 +76,19 @@ function SwipeableCard({
   const maxCardTranslation = width * config.exitDistanceRatio;
   const spring = config.spring;
 
+  // Transition BEFORE notifying, like the gesture path: a consumer that calls
+  // another deck control from its callback (reset() from onSwipeRight, say)
+  // must not have its work undone by an advance that lands afterwards.
   const swipeRight = useCallback(() => {
-    onSwipeRight?.();
     translateX.value = withSpring(maxCardTranslation, spring);
     activeIndex.value = activeIndex.value + 1;
+    onSwipeRight?.();
   }, [activeIndex, maxCardTranslation, onSwipeRight, spring, translateX]);
 
   const swipeLeft = useCallback(() => {
-    onSwipeLeft?.();
     translateX.value = withSpring(-maxCardTranslation, spring);
     activeIndex.value = activeIndex.value + 1;
+    onSwipeLeft?.();
   }, [activeIndex, maxCardTranslation, onSwipeLeft, spring, translateX]);
 
   // Gesture commits advance the deck on the UI thread (see onEnd) and use
@@ -104,6 +101,14 @@ function SwipeableCard({
   const notifySwipeLeft = useCallback(() => {
     onSwipeLeft?.();
   }, [onSwipeLeft]);
+
+  // A wider window (iPad split-screen, an unfolding device) makes the old exit
+  // distance too short, so a discarded card can slide back into view and — with
+  // its higher z-index — swallow touches meant for the active card.
+  useEffect(() => {
+    if (translateX.value === 0) return;
+    translateX.value = Math.sign(translateX.value) * maxCardTranslation;
+  }, [maxCardTranslation, translateX]);
 
   const reset = useCallback(() => {
     // A card the deck has already moved past must stay where it exited: a

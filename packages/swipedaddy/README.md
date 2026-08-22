@@ -57,5 +57,12 @@ the card active while the JS thread was busy, so a second gesture could grab
 an already-committed card, fail the commit check, and spring the discarded
 card back over the real active one.
 
-Upstream all five into swipeDaddy and re-vendor at the next tag to drop this
+`src/SwipeableCard.tsx`, imperative order and resize: `swipeLeft()` /
+`swipeRight()` run the transition before notifying the consumer (a callback
+that calls another deck control was otherwise undone by the advance landing
+after it), and a card that has already exited is re-projected when the window
+widens (its old exit distance could leave it visible and swallowing touches
+meant for the active card).
+
+Upstream all six into swipeDaddy and re-vendor at the next tag to drop this
 note.
