@@ -73,9 +73,19 @@ export function useHomeDeck(
   // the initial render).
   const [seed, setSeed] = useState(() => ({ key: eventsKey(events), savedIds }));
   const key = eventsKey(events);
-  const changedUntouched =
-    !touchedRef.current && (key !== seed.key || savedIds !== seed.savedIds);
-  if (ready && changedUntouched) {
+  const savedChanged = savedIds !== seed.savedIds;
+  const eventsChanged = key !== seed.key;
+  // A savedIds change on an untouched deck reconciles it immediately, even
+  // while the matching page is still in flight: saving one of these events on
+  // Event Details and coming back must drop that card now, not leave it
+  // swipeable until the refetch lands (a swipe in that window would freeze
+  // the stale card in place). A new event list still waits for `ready`, so a
+  // page fetched with the wrong saved count is never dealt.
+  const shouldRebuild =
+    !touchedRef.current &&
+    ((ready && (eventsChanged || savedChanged)) ||
+      (!ready && dealtRef.current && savedChanged));
+  if (shouldRebuild) {
     setSeed({ key, savedIds });
     // Wholesale replacement → bump the key so the engine remounts rather
     // than keeping its old active index.
