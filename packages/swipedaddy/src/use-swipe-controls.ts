@@ -31,10 +31,13 @@ export function useCardRefs(count: number) {
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const cancelPendingResets = useCallback(() => {
+    // Empty in place rather than replacing the array: the unmount cleanup
+    // holds this same reference, and swapping it would leave that cleanup
+    // clearing an array the live timers no longer live in.
     timeouts.current.forEach(timeout => {
       clearTimeout(timeout);
     });
-    timeouts.current = [];
+    timeouts.current.length = 0;
   }, []);
 
   const resetCards = useCallback(() => {
@@ -53,13 +56,10 @@ export function useCardRefs(count: number) {
   }, [cancelPendingResets, refs]);
 
   useEffect(() => {
-    const pending = timeouts.current;
     return () => {
-      pending.forEach(timeout => {
-        clearTimeout(timeout);
-      });
+      cancelPendingResets();
     };
-  }, []);
+  }, [cancelPendingResets]);
 
   return {
     refs,

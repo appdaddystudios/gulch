@@ -74,6 +74,9 @@ function SwipeableCard({
   // reanimated's strict-mode warning on every rerender.
   const currentActiveIndex = useSharedValue(0);
   const nextActiveIndex = useSharedValue(0);
+  // Set in onEnd when this gesture commits a swipe, so onFinalize knows not
+  // to spring the card back over its exit animation.
+  const committed = useSharedValue(false);
 
   const { width } = useWindowDimensions();
   const maxCardTranslation = width * config.exitDistanceRatio;
@@ -169,6 +172,7 @@ function SwipeableCard({
       // offset) would be finalized against a stale commit threshold left by
       // an earlier gated swipe or a reset(), and advance the deck.
       nextActiveIndex.value = currentActiveIndex.value;
+      committed.value = false;
     })
     .onUpdate(event => {
       'worklet';
@@ -187,29 +191,42 @@ function SwipeableCard({
         Extrapolation.CLAMP,
       );
     })
-    .onFinalize(event => {
+    // Commit ONLY here: onEnd runs for a gesture that ended successfully.
+    // onFinalize also runs for a cancelled or failed pan — one that lost to a
+    // competing native gesture, or was interrupted by the app losing focus —
+    // and such a pan keeps its last translation, so deciding there would
+    // commit a swipe the user never completed.
+    .onEnd(event => {
       'worklet';
       if (currentActiveIndex.value !== index) return;
 
       const sign = Math.sign(event.translationX);
-      if (nextActiveIndex.value === activeIndex.value + 1 && sign !== 0) {
-        if (sign === 1) {
-          if (isGated) {
-            // Gated: bounce back and let the consumer decide the commit
-            // (via the imperative swipeRight()).
-            translateX.value = withSpring(0, spring);
-            translateY.value = withSpring(0, spring);
-            scheduleOnRN(rightIntent);
-          } else {
-            scheduleOnRN(swipeRight);
-          }
+      if (nextActiveIndex.value !== activeIndex.value + 1 || sign === 0) return;
+
+      committed.value = true;
+      if (sign === 1) {
+        if (isGated) {
+          // Gated: bounce back and let the consumer decide the commit
+          // (via the imperative swipeRight()).
+          translateX.value = withSpring(0, spring);
+          translateY.value = withSpring(0, spring);
+          scheduleOnRN(rightIntent);
         } else {
-          scheduleOnRN(swipeLeft);
+          scheduleOnRN(swipeRight);
         }
       } else {
-        translateX.value = withSpring(0, spring);
-        translateY.value = withSpring(0, spring);
+        scheduleOnRN(swipeLeft);
       }
+    })
+    // Cleanup only: restore a card whose gesture ended without committing,
+    // including cancellations that never reach onEnd.
+    .onFinalize(() => {
+      'worklet';
+      if (currentActiveIndex.value !== index) return;
+      if (committed.value) return;
+
+      translateX.value = withSpring(0, spring);
+      translateY.value = withSpring(0, spring);
     });
 
   const tap = Gesture.Tap()
