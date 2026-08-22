@@ -94,6 +94,17 @@ function SwipeableCard({
     activeIndex.value = activeIndex.value + 1;
   }, [activeIndex, maxCardTranslation, onSwipeLeft, spring, translateX]);
 
+  // Gesture commits advance the deck on the UI thread (see onEnd) and use
+  // these purely to notify the consumer, so a busy JS thread cannot leave the
+  // card still active between the release and the callback.
+  const notifySwipeRight = useCallback(() => {
+    onSwipeRight?.();
+  }, [onSwipeRight]);
+
+  const notifySwipeLeft = useCallback(() => {
+    onSwipeLeft?.();
+  }, [onSwipeLeft]);
+
   const reset = useCallback(() => {
     // A card the deck has already moved past must stay where it exited: a
     // staggered reset() that lands after the user swiped again would
@@ -212,10 +223,19 @@ function SwipeableCard({
           translateY.value = withSpring(0, spring);
           scheduleOnRN(rightIntent);
         } else {
-          scheduleOnRN(swipeRight);
+          // Exit and advance HERE, on the UI thread. Leaving the advance to
+          // the scheduled callback let a busy JS thread keep this card active
+          // long enough for a second gesture to grab it; that gesture then
+          // failed the commit check and its finalizer sprang the discarded
+          // card back over the real active card.
+          translateX.value = withSpring(maxCardTranslation, spring);
+          activeIndex.value = activeIndex.value + 1;
+          scheduleOnRN(notifySwipeRight);
         }
       } else {
-        scheduleOnRN(swipeLeft);
+        translateX.value = withSpring(-maxCardTranslation, spring);
+        activeIndex.value = activeIndex.value + 1;
+        scheduleOnRN(notifySwipeLeft);
       }
     })
     // Cleanup only: restore a card whose gesture ended without committing,
