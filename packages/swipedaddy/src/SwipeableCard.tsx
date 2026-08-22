@@ -71,6 +71,10 @@ function SwipeableCard({
   // Set in onEnd when this gesture commits a swipe, so onFinalize knows not
   // to spring the card back over its exit animation.
   const committed = useSharedValue(false);
+  // True once this card has actually left the deck. A nonzero translation is
+  // NOT the same thing — a card being dragged, or springing back from a failed
+  // or gated swipe, is still very much in play.
+  const exited = useSharedValue(false);
 
   const { width } = useWindowDimensions();
   const maxCardTranslation = width * config.exitDistanceRatio;
@@ -81,15 +85,17 @@ function SwipeableCard({
   // must not have its work undone by an advance that lands afterwards.
   const swipeRight = useCallback(() => {
     translateX.value = withSpring(maxCardTranslation, spring);
+    exited.value = true;
     activeIndex.value = activeIndex.value + 1;
     onSwipeRight?.();
-  }, [activeIndex, maxCardTranslation, onSwipeRight, spring, translateX]);
+  }, [activeIndex, exited, maxCardTranslation, onSwipeRight, spring, translateX]);
 
   const swipeLeft = useCallback(() => {
     translateX.value = withSpring(-maxCardTranslation, spring);
+    exited.value = true;
     activeIndex.value = activeIndex.value + 1;
     onSwipeLeft?.();
-  }, [activeIndex, maxCardTranslation, onSwipeLeft, spring, translateX]);
+  }, [activeIndex, exited, maxCardTranslation, onSwipeLeft, spring, translateX]);
 
   // Gesture commits advance the deck on the UI thread (see onEnd) and use
   // these purely to notify the consumer, so a busy JS thread cannot leave the
@@ -106,9 +112,9 @@ function SwipeableCard({
   // distance too short, so a discarded card can slide back into view and — with
   // its higher z-index — swallow touches meant for the active card.
   useEffect(() => {
-    if (translateX.value === 0) return;
+    if (!exited.value) return;
     translateX.value = Math.sign(translateX.value) * maxCardTranslation;
-  }, [maxCardTranslation, translateX]);
+  }, [exited, maxCardTranslation, translateX]);
 
   const reset = useCallback(() => {
     // A card the deck has already moved past must stay where it exited: a
@@ -118,6 +124,7 @@ function SwipeableCard({
     if (index < Math.floor(activeIndex.value)) {
       return;
     }
+    exited.value = false;
     if (translateX.value !== 0) {
       cancelAnimation(translateX);
       translateX.value = withSpring(0, spring);
@@ -126,7 +133,7 @@ function SwipeableCard({
       cancelAnimation(translateY);
       translateY.value = withSpring(0, spring);
     }
-  }, [activeIndex, index, spring, translateX, translateY]);
+  }, [activeIndex, exited, index, spring, translateX, translateY]);
 
   const rightIntent = useCallback(() => {
     onSwipeRightIntent?.();
@@ -234,11 +241,13 @@ function SwipeableCard({
           // failed the commit check and its finalizer sprang the discarded
           // card back over the real active card.
           translateX.value = withSpring(maxCardTranslation, spring);
+          exited.value = true;
           activeIndex.value = activeIndex.value + 1;
           scheduleOnRN(notifySwipeRight);
         }
       } else {
         translateX.value = withSpring(-maxCardTranslation, spring);
+        exited.value = true;
         activeIndex.value = activeIndex.value + 1;
         scheduleOnRN(notifySwipeLeft);
       }
