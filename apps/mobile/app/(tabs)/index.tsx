@@ -167,8 +167,13 @@ export default function HomeScreen() {
     if (state.status === "ready") {
       setDeckEvents(state.data.deck);
       setDeckSavedCount(state.data.deckSavedCount);
+    } else if (state.status === "error") {
+      // A failed saved-aware refetch must not leave a reconciled deck inert
+      // forever: settle it with the rows already in hand so it is swipeable
+      // again. The carousels surface the error; the deck just stops waiting.
+      setDeckSavedCount(savedCount);
     }
-  }, [state]);
+  }, [savedCount, state]);
 
   // Soonest-first — savedList is id-sorted for stable query deps, which is
   // meaningless for display.
