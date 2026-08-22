@@ -18,3 +18,14 @@ into `packages/swipedaddy/node_modules`, and Metro's hierarchical lookup would
 then bundle a second copy next to the app's SDK-pinned one ("property is not
 writable" at startup). `apps/mobile` installs the SDK-matched versions via
 `npx expo install`; Metro resolves them from the hoisted root `node_modules`.
+
+## Local divergence from upstream
+
+`src/SwipeableCard.tsx` carries one fix that is not yet in the upstream tag
+(review finding on PR #38): the pan gesture now clears `nextActiveIndex` in
+`onBegin` and ignores a finalize with zero translation. Without it a gesture
+that never reaches `onUpdate` (a tap, or a pan that fails the activation
+offset) is finalized against a stale commit threshold left by an earlier
+gated swipe or `reset()`, and `Math.sign(0)` falls through the left branch —
+advancing the deck on a tap. Upstream this into swipeDaddy and re-vendor at
+the next tag to drop this note.
