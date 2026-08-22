@@ -122,12 +122,15 @@ export default function HomeScreen() {
   );
   // Stable string deps so the loader identity only changes when ids change.
   const savedKey = savedList.join(",");
+  // savedList is capped, so its key can stay equal while the real count moves
+  // — and that count drives how far the deck query reaches past saved ids.
+  const savedCount = savedIds.size;
   const recentKey = recentIds.join(",");
   const loader = useCallback(
     (c: Parameters<typeof listUpcomingEvents>[0]) =>
-      loadHome(c, [...new Set([...savedList, ...recentIds])], savedIds.size),
+      loadHome(c, [...new Set([...savedList, ...recentIds])], savedCount),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [savedKey, recentKey],
+    [savedKey, recentKey, savedCount],
   );
   const { state } = useQuery(client, loader);
 

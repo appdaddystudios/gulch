@@ -54,16 +54,19 @@ export function useHomeDeck(
     return next;
   }, []);
 
-  // Rebuild only when the CONTENT of `events` changes. Home re-runs loadHome
-  // after every save, handing back an equal list under a new identity — that
-  // must not reset a deck mid-session. savedIds changes rebuild only while
-  // the deck is untouched (saved-ids hydration can land after the first
-  // load); once swiping has started, saving from the deck already removed
-  // that card.
+  // A dealt deck is frozen for the rest of the session: once a swipe has
+  // committed, neither a new `events` list nor a savedIds change rebuilds it.
+  // Home re-runs loadHome after every save, and because the deck query
+  // over-fetches past saved ids each save hands back a LONGER list —-
+  // rebuilding on that would remount the engine, discard the user's skip
+  // order and endlessly replenish the session. Before the first swipe both
+  // still rebuild (saved-ids hydration and the first real page can land after
+  // the initial render).
   const [seed, setSeed] = useState(() => ({ key: eventsKey(events), savedIds }));
   const key = eventsKey(events);
-  const savedChangedUntouched = !touchedRef.current && savedIds !== seed.savedIds;
-  if (key !== seed.key || savedChangedUntouched) {
+  const changedUntouched =
+    !touchedRef.current && (key !== seed.key || savedIds !== seed.savedIds);
+  if (changedUntouched) {
     setSeed({ key, savedIds });
     // Wholesale replacement → bump the key so the engine remounts rather
     // than keeping its old active index.
