@@ -36,7 +36,7 @@ export function SwipeDeck<T>(
     () => ({ ...DEFAULT_CONFIG, ...configOverrides }),
     [configOverrides],
   );
-  const { refs, resetCards, cancelPendingResets } = useCardRefs(data.length);
+  const { refs, resetCards } = useCardRefs(data.length);
 
   const reset = useCallback(() => {
     activeIndex.value = 0;
@@ -50,33 +50,6 @@ export function SwipeDeck<T>(
   const swipeRight = useCallback(() => {
     refs[Math.floor(activeIndex.value)]?.current?.swipeRight();
   }, [activeIndex, refs]);
-
-  // Every commit path (gesture or ref) starts here, so this is where a reset
-  // stagger left over from a previous reset() must be dropped — otherwise it
-  // fires mid-exit and returns a discarded card to the centre.
-  const handleSwipeLeft = useCallback(
-    (item: T, index: number) => {
-      cancelPendingResets();
-      onSwipeLeft?.(item, index);
-    },
-    [cancelPendingResets, onSwipeLeft],
-  );
-
-  const handleSwipeRight = useCallback(
-    (item: T, index: number) => {
-      cancelPendingResets();
-      onSwipeRight?.(item, index);
-    },
-    [cancelPendingResets, onSwipeRight],
-  );
-
-  const handleSwipeRightIntent = useCallback(
-    (item: T, index: number) => {
-      cancelPendingResets();
-      onSwipeRightIntent?.(item, index);
-    },
-    [cancelPendingResets, onSwipeRightIntent],
-  );
 
   useImperativeHandle(ref, () => {
     return {
@@ -112,11 +85,13 @@ export function SwipeDeck<T>(
           config={config}
           cardStyle={cardStyle}
           ref={refs[index]}
-          onSwipeLeft={() => handleSwipeLeft(item, index)}
-          onSwipeRight={() => handleSwipeRight(item, index)}
+          onSwipeLeft={onSwipeLeft ? () => onSwipeLeft(item, index) : undefined}
+          onSwipeRight={
+            onSwipeRight ? () => onSwipeRight(item, index) : undefined
+          }
           onSwipeRightIntent={
             onSwipeRightIntent
-              ? () => handleSwipeRightIntent(item, index)
+              ? () => onSwipeRightIntent(item, index)
               : undefined
           }
           onPress={onCardPress ? () => onCardPress(item, index) : undefined}

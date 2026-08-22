@@ -92,6 +92,13 @@ function SwipeableCard({
   }, [activeIndex, maxCardTranslation, onSwipeLeft, spring, translateX]);
 
   const reset = useCallback(() => {
+    // A card the deck has already moved past must stay where it exited: a
+    // staggered reset() that lands after the user swiped again would
+    // otherwise spring a discarded card back to the centre while activeIndex
+    // stays advanced.
+    if (index < Math.floor(activeIndex.value)) {
+      return;
+    }
     if (translateX.value !== 0) {
       cancelAnimation(translateX);
       translateX.value = withSpring(0, spring);
@@ -100,7 +107,7 @@ function SwipeableCard({
       cancelAnimation(translateY);
       translateY.value = withSpring(0, spring);
     }
-  }, [spring, translateX, translateY]);
+  }, [activeIndex, index, spring, translateX, translateY]);
 
   const rightIntent = useCallback(() => {
     onSwipeRightIntent?.();
