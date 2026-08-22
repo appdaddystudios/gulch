@@ -24,16 +24,18 @@ writable" at startup). `apps/mobile` installs the SDK-matched versions via
 Two review findings from PR #38 are fixed here but not yet in the upstream
 tag.
 
-`src/SwipeableCard.tsx`: the pan gesture now clears `nextActiveIndex` in
-`onBegin` and ignores a finalize with zero translation. Without it a gesture
-that never reaches `onUpdate` (a tap, or a pan that fails the activation
-offset) is finalized against a stale commit threshold left by an earlier
-gated swipe or `reset()`, and `Math.sign(0)` falls through the left branch —
-advancing the deck on a tap. Upstream this into swipeDaddy and re-vendor at
-the next tag to drop this note.
+`src/SwipeableCard.tsx`, gesture commit: the pan gesture clears
+`nextActiveIndex` in `onBegin` and ignores a finalize with zero translation.
+Without it a gesture that never reaches `onUpdate` (a tap, or a pan that
+fails the activation offset) is finalized against a stale commit threshold
+left by an earlier gated swipe or `reset()`, and `Math.sign(0)` falls through
+the left branch — advancing the deck on a tap.
 
-`src/use-swipe-controls.ts` / `src/SwipeDeck.tsx`: the staggered `reset()`
-timers are now cancelled whenever a swipe commits. A pending stagger that
-fired mid-exit called `reset()` on the card being discarded, cancelling its
-exit animation and springing it back to the centre while `activeIndex` had
-already advanced.
+`src/SwipeableCard.tsx`, `reset()`: a card the deck has already moved past
+ignores `reset()`. `reset()` restores the deck through a staggered timer per
+card; if the user swipes while that stagger is still running, the pending
+timer used to cancel the exiting card's animation and spring a discarded card
+back to the centre. Guarding inside the card (rather than cancelling the
+timers) keeps the cards still ahead of `activeIndex` restoring normally.
+
+Upstream both into swipeDaddy and re-vendor at the next tag to drop this note.

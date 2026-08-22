@@ -61,6 +61,5 @@ export function useCardRefs(count: number) {
   return {
     refs,
     resetCards,
-    cancelPendingResets,
   };
 }
