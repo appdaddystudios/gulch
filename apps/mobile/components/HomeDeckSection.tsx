@@ -34,7 +34,11 @@ const STACK_DEPTH = (DECK_CONFIG.visibleCards ?? 1) - 1;
 const CARD_INSET = space.xl * 2;
 const STACK_BOTTOM_GAP = space.md;
 
+// `activate` is what a screen-reader double tap fires. The grouped container
+// hides the card's own tap gesture from assistive tech, so without it the
+// hint below would promise an interaction nobody could perform.
 const A11Y_ACTIONS = [
+  { name: "activate", label: "Open event" },
   { name: "save", label: "Save event" },
   { name: "skip", label: "Skip event" },
 ];
@@ -69,9 +73,14 @@ export function HomeDeckSection({ events, savedIds }: HomeDeckSectionProps) {
     : `Event deck, ${deck.remaining} to go`;
 
   const onAccessibilityAction = (event: AccessibilityActionEvent) => {
-    if (event.nativeEvent.actionName === "save") {
+    const action = event.nativeEvent.actionName;
+    if (action === "activate") {
+      if (deck.top) {
+        deck.onCardPress(deck.top);
+      }
+    } else if (action === "save") {
       deckRef.current?.swipeRight();
-    } else if (event.nativeEvent.actionName === "skip") {
+    } else if (action === "skip") {
       deckRef.current?.swipeLeft();
     }
   };
