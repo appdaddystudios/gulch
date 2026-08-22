@@ -38,6 +38,11 @@ export function useHomeDeck(
   // synchronously, not a stale closure.
   const stateRef = useRef(state);
   const savesRef = useRef(0);
+  // Whether the CURRENT build produced at least one card. `events` being
+  // non-empty is not the same thing: a returning user can have saved every
+  // fetched event, and that deck must stay hidden rather than showing the
+  // post-session empty state.
+  const dealtRef = useRef(state.entries.length > 0);
   // True once a swipe has committed — from then on the session is protected
   // from rebuilds caused by savedIds changes.
   const touchedRef = useRef(false);
@@ -69,6 +74,7 @@ export function useHomeDeck(
     stateRef.current = next;
     savesRef.current = 0;
     touchedRef.current = false;
+    dealtRef.current = next.entries.length > 0;
     setState(next);
   }
 
@@ -137,6 +143,7 @@ export function useHomeDeck(
   return {
     entries: state.entries,
     deckKey: state.deckKey,
+    dealt: dealtRef.current,
     top: topEntry(state),
     remaining: remainingOf(state),
     onSwipeLeft,

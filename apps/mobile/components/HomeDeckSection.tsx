@@ -56,7 +56,9 @@ export function HomeDeckSection({ events, savedIds }: HomeDeckSectionProps) {
   const { width } = useWindowDimensions();
   const deck = useHomeDeck(events, savedIds);
 
-  if (events.length === 0) {
+  // Nothing was dealt: either the query came back empty or every fetched
+  // event is already saved. Either way the section stays hidden.
+  if (!deck.dealt) {
     return null;
   }
 
