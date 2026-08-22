@@ -46,15 +46,21 @@ const A11Y_ACTIONS = [
 type HomeDeckSectionProps = {
   readonly events: readonly EventListItem[];
   readonly savedIds: ReadonlySet<string>;
+  /** The fetched page was queried with the current saved-id count. */
+  readonly savedCountMatches: boolean;
 };
 
 // Home V3.1 swipe deck: right = save, left = back to the bottom, tap = open.
 // Hidden when there is nothing to deal at load; an empty state once the user
 // has saved every card.
-export function HomeDeckSection({ events, savedIds }: HomeDeckSectionProps) {
+export function HomeDeckSection({
+  events,
+  savedIds,
+  savedCountMatches,
+}: HomeDeckSectionProps) {
   const deckRef = useRef<SwipeDeckRef>(null);
   const { width } = useWindowDimensions();
-  const deck = useHomeDeck(events, savedIds);
+  const deck = useHomeDeck(events, savedIds, savedCountMatches);
 
   // Nothing was dealt: either the query came back empty or every fetched
   // event is already saved. Either way the section stays hidden.
@@ -67,7 +73,7 @@ export function HomeDeckSection({ events, savedIds }: HomeDeckSectionProps) {
   // empties the deck is the one save that never confirms.
   if (deck.remaining === 0) {
     return (
-      <>
+      <View style={styles.deck}>
         <EmptyState
           title="You've saved them all"
           subtitle="Find more in Calendar"
@@ -78,7 +84,7 @@ export function HomeDeckSection({ events, savedIds }: HomeDeckSectionProps) {
           visible={deck.toast.visible}
           onDismiss={deck.toast.dismiss}
         />
-      </>
+      </View>
     );
   }
 

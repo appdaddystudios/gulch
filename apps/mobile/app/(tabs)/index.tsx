@@ -57,6 +57,9 @@ type HomeData = {
   readonly events: readonly EventListItem[];
   readonly trending: readonly EventListItem[];
   readonly deck: readonly EventListItem[];
+  // Saved-id count this deck query reached past — the deck must not be dealt
+  // from a page fetched before hydration knew the real count.
+  readonly deckSavedCount: number;
   readonly byId: ReadonlyMap<string, EventListItem>;
   readonly organizers: readonly FeaturedOrganizer[];
   readonly config: HomeConfig;
@@ -90,7 +93,15 @@ const loadHome = async (
     ...ranked,
     ...events.filter((event) => !seen.has(event.id)),
   ].slice(0, TRENDING_LIMIT);
-  return { events, trending, deck, byId, organizers, config };
+  return {
+    events,
+    trending,
+    deck,
+    deckSavedCount: savedCount,
+    byId,
+    organizers,
+    config,
+  };
 };
 
 export default function HomeScreen() {
@@ -141,6 +152,7 @@ export default function HomeScreen() {
           events: [],
           trending: [],
           deck: [],
+          deckSavedCount: -1,
           byId: new Map(),
           organizers: [],
           config: HOME_CONFIG_DEFAULTS,
@@ -150,9 +162,11 @@ export default function HomeScreen() {
   // loading state — the deck must not: keep the last ready list so a right
   // swipe doesn't blank and reset the stack mid-session.
   const [deckEvents, setDeckEvents] = useState<readonly EventListItem[]>([]);
+  const [deckSavedCount, setDeckSavedCount] = useState(-1);
   useEffect(() => {
     if (state.status === "ready") {
       setDeckEvents(state.data.deck);
+      setDeckSavedCount(state.data.deckSavedCount);
     }
   }, [state]);
 
@@ -244,7 +258,14 @@ export default function HomeScreen() {
           </Carousel>
         </Section>
 
-        <HomeDeckSection events={deckEvents} savedIds={savedIds} />
+        <HomeDeckSection
+          events={deckEvents}
+          savedIds={savedIds}
+          // Only a page fetched with today's saved count may be dealt: the
+          // first request can land before hydration, carrying rows that stop
+          // short of the ids the deck will drop.
+          savedCountMatches={deckSavedCount === savedCount}
+        />
 
         <Section title="Your Favorites">
           <Carousel

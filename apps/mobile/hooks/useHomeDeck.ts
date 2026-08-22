@@ -27,17 +27,20 @@ const EMPTY_DECK: DeckState = { entries: [], head: 0, deckKey: 0 };
 export function useHomeDeck(
   events: readonly EventListItem[],
   savedIds: ReadonlySet<string>,
+  savedCountMatches: boolean,
 ) {
   const router = useRouter();
   const { isSaved, toggle, toastVisible, toastNonce, dismissToast, hydrated } =
     useSaveToast();
 
-  // Nothing is dealt until the device's saved ids are known: a deck built
-  // against the pre-hydration empty set would offer events the user has
-  // already favorited, and a swipe during that window used to freeze it that
-  // way for the session.
+  // Nothing is dealt until the device's saved ids are known AND the fetched
+  // page was queried with that same count. A deck built against the
+  // pre-hydration empty set would offer events the user has already
+  // favorited — or, once filtered, a short page that a swipe would freeze in
+  // place for the session.
+  const ready = hydrated && savedCountMatches;
   const [state, setState] = useState<DeckState>(() =>
-    hydrated ? buildDeck(events, savedIds) : EMPTY_DECK,
+    ready ? buildDeck(events, savedIds) : EMPTY_DECK,
   );
   // Mirror of `state` for the engine callbacks, which arrive as a burst from
   // the gesture/animation thread — each must see the previous one's result
@@ -72,7 +75,7 @@ export function useHomeDeck(
   const key = eventsKey(events);
   const changedUntouched =
     !touchedRef.current && (key !== seed.key || savedIds !== seed.savedIds);
-  if (hydrated && changedUntouched) {
+  if (ready && changedUntouched) {
     setSeed({ key, savedIds });
     // Wholesale replacement → bump the key so the engine remounts rather
     // than keeping its old active index.
