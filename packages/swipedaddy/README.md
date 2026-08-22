@@ -38,4 +38,10 @@ timer used to cancel the exiting card's animation and spring a discarded card
 back to the centre. Guarding inside the card (rather than cancelling the
 timers) keeps the cards still ahead of `activeIndex` restoring normally.
 
-Upstream both into swipeDaddy and re-vendor at the next tag to drop this note.
+`src/use-swipe-controls.ts`: growing `count` (paginated data) now appends
+refs instead of recreating the whole list. Recreating them detached the
+handles a pending reset stagger had closed over, so those callbacks saw a
+null `ref.current` and left their card unrestored.
+
+Upstream all three into swipeDaddy and re-vendor at the next tag to drop this
+note.
