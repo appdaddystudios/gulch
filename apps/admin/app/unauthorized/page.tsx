@@ -2,12 +2,18 @@ import { SignOutButton } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
 
 import { cardClass, primaryButtonClass } from "@/components/forms";
-import { getAdminIdentity } from "@/lib/auth";
+import { getAdminIdentity, isAdminIdentity } from "@/lib/auth";
 
 export default async function UnauthorizedPage() {
   const identity = await getAdminIdentity();
   if (!identity) {
     redirect("/sign-in");
+  }
+  // Re-check the allowlist on every render: an account added to
+  // ADMIN_ALLOWED_EMAILS after landing here recovers by refreshing, and a
+  // current admin who opens this URL directly is not told they are locked out.
+  if (isAdminIdentity(identity)) {
+    redirect("/");
   }
 
   return (

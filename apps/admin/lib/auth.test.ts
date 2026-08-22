@@ -1,6 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { assertAdmin, getAdminIdentity, getAllowedEmails, requireAdmin } from "./auth";
+import {
+  assertAdmin,
+  getAdminIdentity,
+  getAllowedEmails,
+  isAdminIdentity,
+  requireAdmin
+} from "./auth";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
@@ -94,6 +100,39 @@ describe("getAdminIdentity", () => {
     mocks.currentUser.mockResolvedValue(null);
 
     expect(await getAdminIdentity()).toEqual({ userId: "user_1", email: null });
+  });
+});
+
+describe("isAdminIdentity", () => {
+  it("returns false when there is no identity", () => {
+    expect(isAdminIdentity(null)).toBe(false);
+  });
+
+  it("returns true for an allowlisted email regardless of case", () => {
+    expect(isAdminIdentity({ userId: "user_1", email: "OWNER@Example.com" })).toBe(true);
+  });
+
+  it("returns false for an email that is not on the allowlist", () => {
+    expect(isAdminIdentity({ userId: "user_1", email: "stranger@example.com" })).toBe(false);
+  });
+
+  it("returns false when no email could be resolved", () => {
+    expect(isAdminIdentity({ userId: "user_1", email: null })).toBe(false);
+  });
+
+  it("re-reads the allowlist so a newly added email is picked up", () => {
+    const identity = { userId: "user_1", email: "newcomer@example.com" };
+    expect(isAdminIdentity(identity)).toBe(false);
+
+    process.env.ADMIN_ALLOWED_EMAILS = "owner@example.com, newcomer@example.com";
+
+    expect(isAdminIdentity(identity)).toBe(true);
+  });
+
+  it("throws when the allowlist is empty (fail closed)", () => {
+    process.env.ADMIN_ALLOWED_EMAILS = "";
+
+    expect(() => isAdminIdentity(null)).toThrow(/ADMIN_ALLOWED_EMAILS is empty/);
   });
 });
 

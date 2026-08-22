@@ -43,18 +43,24 @@ export const getAdminIdentity = async (): Promise<AdminIdentity | null> => {
   return { userId: session.userId, email: await resolveEmail(session.sessionClaims) };
 };
 
+// Single source of truth for "may this identity edit?". Reads the allowlist on
+// every call so an updated ADMIN_ALLOWED_EMAILS takes effect without the caller
+// caching a stale answer. Throws when the allowlist is unconfigured.
+export const isAdminIdentity = (identity: AdminIdentity | null): boolean => {
+  const allowedEmails = getAllowedEmails();
+  return identity !== null && isAllowedEmail(identity.email, allowedEmails);
+};
+
 type AdminCheck = {
   readonly identity: AdminIdentity | null;
   readonly allowed: boolean;
 };
 
 const checkAdmin = async (): Promise<AdminCheck> => {
-  const allowedEmails = getAllowedEmails();
+  // Fail closed on a missing allowlist before spending a round trip on Clerk.
+  getAllowedEmails();
   const identity = await getAdminIdentity();
-  return {
-    identity,
-    allowed: identity !== null && isAllowedEmail(identity.email, allowedEmails)
-  };
+  return { identity, allowed: isAdminIdentity(identity) };
 };
 
 export const requireAdmin = async (): Promise<AdminIdentity> => {
