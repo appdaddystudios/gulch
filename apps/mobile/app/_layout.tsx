@@ -9,6 +9,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { SavedEventsProvider } from "../hooks/useSavedEvents";
@@ -51,17 +52,20 @@ export default function RootLayout() {
   }, [fontsLoaded, fontsError]);
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="light" />
-      <SavedEventsProvider>
-        {fontsLoaded || fontsError ? (
-          // On font failure the app still renders (system font fallback)
-          // rather than sitting behind a hidden splash on a dark view.
-          <Stack screenOptions={{ headerShown: false }} />
-        ) : (
-          <View style={{ flex: 1, backgroundColor: color.darkChocolate }} />
-        )}
-      </SavedEventsProvider>
-    </SafeAreaProvider>
+    // Gesture root must wrap everything that hosts RNGH detectors (home deck).
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <SavedEventsProvider>
+          {fontsLoaded || fontsError ? (
+            // On font failure the app still renders (system font fallback)
+            // rather than sitting behind a hidden splash on a dark view.
+            <Stack screenOptions={{ headerShown: false }} />
+          ) : (
+            <View style={{ flex: 1, backgroundColor: color.darkChocolate }} />
+          )}
+        </SavedEventsProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

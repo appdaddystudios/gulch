@@ -11,6 +11,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.8.0",
     "@gulch/db": "workspace:*",
     "@sentry/nextjs": "^10.32.0",
     "@supabase/supabase-js": "^2.50.3",
