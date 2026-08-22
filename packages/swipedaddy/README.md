@@ -24,12 +24,14 @@ writable" at startup). `apps/mobile` installs the SDK-matched versions via
 Two review findings from PR #38 are fixed here but not yet in the upstream
 tag.
 
-`src/SwipeableCard.tsx`, gesture commit: the pan gesture clears
-`nextActiveIndex` in `onBegin` and ignores a finalize with zero translation.
-Without it a gesture that never reaches `onUpdate` (a tap, or a pan that
-fails the activation offset) is finalized against a stale commit threshold
-left by an earlier gated swipe or `reset()`, and `Math.sign(0)` falls through
-the left branch — advancing the deck on a tap.
+`src/SwipeableCard.tsx`, gesture commit: the swipe is committed in `onEnd`
+(which runs only for a gesture that ended successfully) and `onFinalize` does
+nothing but restore an uncommitted card. `onBegin` also clears
+`nextActiveIndex`. Committing in `onFinalize` fired for cancelled and failed
+pans too: a tap or an activation-offset-failed pan was judged against a stale
+threshold (and `Math.sign(0)` fell through the left branch), and a pan
+cancelled past the threshold — app backgrounded, competing native gesture —
+committed a swipe the user never completed.
 
 `src/SwipeableCard.tsx`, `reset()`: a card the deck has already moved past
 ignores `reset()`. `reset()` restores the deck through a staggered timer per
@@ -43,5 +45,10 @@ refs instead of recreating the whole list. Recreating them detached the
 handles a pending reset stagger had closed over, so those callbacks saw a
 null `ref.current` and left their card unrestored.
 
-Upstream all three into swipeDaddy and re-vendor at the next tag to drop this
+`src/use-swipe-controls.ts`, unmount: the cleanup clears the timer array in
+place. `cancelPendingResets` used to replace the array, leaving the unmount
+cleanup holding an empty one while live stagger timers kept the JS thread
+awake for up to `(count - 1) * 100ms` after unmount.
+
+Upstream all four into swipeDaddy and re-vendor at the next tag to drop this
 note.
