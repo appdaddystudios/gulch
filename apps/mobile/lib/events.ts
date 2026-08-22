@@ -146,6 +146,35 @@ export const listUpcomingEvents = async (
   return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
 };
 
+type ListDeckOptions = {
+  readonly limit?: number;
+  readonly nowIso?: string;
+};
+
+// Home swipe deck: upcoming events that have a usable hero image (R7),
+// soonest first. The client-side deck reducer drops already-saved ids.
+export const listDeckEvents = async (
+  client: DbClient,
+  { limit = 20, nowIso }: ListDeckOptions = {},
+): Promise<readonly EventListItem[]> => {
+  const startBoundary = nowIso ?? new Date().toISOString();
+
+  const { data, error } = await client
+    .from("events")
+    .select(EVENT_SELECT)
+    .gte("start_at", startBoundary)
+    .eq("image_status", "ok")
+    .not("image_url", "is", null)
+    .order("start_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
+};
+
 const rawTrendingRowSchema = z.object({
   saves: z.number(),
   events: rawEventSchema,

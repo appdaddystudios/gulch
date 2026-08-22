@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -14,13 +14,15 @@ import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import { BannerAdSlot, BannerCard, PromoBanner } from "../../components/Banner";
 import { Button } from "../../components/Button";
 import { Header } from "../../components/Header";
+import { HomeDeckSection } from "../../components/HomeDeckSection";
 import { SearchIcon } from "../../components/icons";
 import { SearchBar } from "../../components/SearchBar";
 import { SectionTitle } from "../../components/SectionTitle";
-import { VenueMap } from "../../components/VenueMap";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
+import { DECK_CAP } from "../../lib/deck";
 import {
+  listDeckEvents,
   listEventsByIds,
   listTrendingEvents,
   listUpcomingEvents,
@@ -39,12 +41,11 @@ import {
 } from "../../lib/organizers";
 import { getRecentlyViewedIds } from "../../lib/recentlyViewed";
 import { captureEvent } from "../../lib/telemetry";
-import { color, radius, space, type as typePreset } from "../../theme";
+import { color, space, type as typePreset } from "../../theme";
 
 // Past this scroll offset the search bar has scrolled away, so the header
 // grows a search icon in its place (V3 "Home - Scrolled Search").
 const SEARCH_COLLAPSE_OFFSET = 72;
-const MAP_CARD_HEIGHT = 300;
 const FAVORITES_LIMIT = 6;
 const RECENT_LIMIT = 6;
 // Bounds the `.in(...)` id filter Home sends to PostgREST — the carousels only
@@ -55,6 +56,7 @@ const SAVED_IDS_CAP = 30;
 type HomeData = {
   readonly events: readonly EventListItem[];
   readonly trending: readonly EventListItem[];
+  readonly deck: readonly EventListItem[];
   readonly byId: ReadonlyMap<string, EventListItem>;
   readonly organizers: readonly FeaturedOrganizer[];
   readonly config: HomeConfig;
@@ -66,9 +68,10 @@ const loadHome = async (
   client: Parameters<typeof listUpcomingEvents>[0],
   extraIds: readonly string[],
 ): Promise<HomeData> => {
-  const [events, ranked, extra, organizers, config] = await Promise.all([
+  const [events, ranked, deck, extra, organizers, config] = await Promise.all([
     listUpcomingEvents(client, { limit: 12 }),
     listTrendingEvents(client, { limit: TRENDING_LIMIT }),
+    listDeckEvents(client, { limit: DECK_CAP }),
     extraIds.length > 0 ? listEventsByIds(client, extraIds) : Promise.resolve([]),
     listFeaturedOrganizers(client, { limit: 9 }),
     getHomeConfig(client),
@@ -84,7 +87,7 @@ const loadHome = async (
     ...ranked,
     ...events.filter((event) => !seen.has(event.id)),
   ].slice(0, TRENDING_LIMIT);
-  return { events, trending, byId, organizers, config };
+  return { events, trending, deck, byId, organizers, config };
 };
 
 export default function HomeScreen() {
@@ -131,10 +134,21 @@ export default function HomeScreen() {
       : {
           events: [],
           trending: [],
+          deck: [],
           byId: new Map(),
           organizers: [],
           config: HOME_CONFIG_DEFAULTS,
         };
+
+  // Every save re-runs loadHome (savedKey dep) and the carousels flash their
+  // loading state — the deck must not: keep the last ready list so a right
+  // swipe doesn't blank and reset the stack mid-session.
+  const [deckEvents, setDeckEvents] = useState<readonly EventListItem[]>([]);
+  useEffect(() => {
+    if (state.status === "ready") {
+      setDeckEvents(state.data.deck);
+    }
+  }, [state]);
 
   // Soonest-first — savedList is id-sorted for stable query deps, which is
   // meaningless for display.
@@ -216,15 +230,6 @@ export default function HomeScreen() {
       >
         <SearchBar onPress={openSearch} />
 
-        <Section title="Your Favorites">
-          <Carousel
-            state={state.status}
-            emptyText="Tap the heart on any event to see it here."
-          >
-            {renderEventCards(favoriteEvents)}
-          </Carousel>
-        </Section>
-
         {bannerAd ? <BannerAdSlot ad={bannerAd} onPress={openBannerAd} /> : null}
 
         <Section title="Trending">
@@ -233,10 +238,15 @@ export default function HomeScreen() {
           </Carousel>
         </Section>
 
-        <Section title="Hotspots Map">
-          <View style={styles.mapCard}>
-            <VenueMap compact eventSource="home" />
-          </View>
+        <HomeDeckSection events={deckEvents} savedIds={savedIds} />
+
+        <Section title="Your Favorites">
+          <Carousel
+            state={state.status}
+            emptyText="Tap the heart on any event to see it here."
+          >
+            {renderEventCards(favoriteEvents)}
+          </Carousel>
         </Section>
 
         <Section title="Recently Viewed">
@@ -355,13 +365,6 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: space.md,
-  },
-  mapCard: {
-    borderColor: color.oreo,
-    borderRadius: radius.card,
-    borderWidth: 2,
-    height: MAP_CARD_HEIGHT,
-    overflow: "hidden",
   },
   carouselRow: {
     gap: space.md,

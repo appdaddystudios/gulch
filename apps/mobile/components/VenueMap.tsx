@@ -33,19 +33,10 @@ if (MAPBOX_TOKEN) {
 // Metro Atlanta, framed around downtown/midtown where most venues cluster.
 const ATLANTA_CENTER: readonly [number, number] = [-84.388, 33.758];
 const DEFAULT_ZOOM = 11;
-const COMPACT_ZOOM = 10.2;
 const PIN_SIZE = 36;
 
-type VenueMapProps = {
-  // Compact mode scales the map into a card (Home "Hotspots Map"): tighter
-  // zoom, slimmer venue sheet — same pins, selection, and navigation.
-  readonly compact?: boolean;
-  readonly eventSource?: string;
-};
-
-// The live venue map extracted from the Map tab so Home can embed the same
-// functionality inside a card (V3 requirement: "same function, scaled").
-export function VenueMap({ compact = false, eventSource = "map" }: VenueMapProps) {
+// The live venue map behind the Map tab (pins, venue sheet, save + open).
+export function VenueMap() {
   const client = useDbClient();
   const loader = useCallback(
     (c: NonNullable<ReturnType<typeof useDbClient>>) => listMapVenues(c),
@@ -53,19 +44,15 @@ export function VenueMap({ compact = false, eventSource = "map" }: VenueMapProps
   );
   const { state, reload } = useQuery(client, loader);
 
-  return <Content state={state} onRetry={reload} compact={compact} eventSource={eventSource} />;
+  return <Content state={state} onRetry={reload} />;
 }
 
 function Content({
   state,
   onRetry,
-  compact,
-  eventSource,
 }: {
   readonly state: QueryState<readonly MapVenue[]>;
   readonly onRetry: () => void;
-  readonly compact: boolean;
-  readonly eventSource: string;
 }) {
   const router = useRouter();
   const { isSaved, toggle, toastVisible, toastNonce, dismissToast } =
@@ -138,7 +125,7 @@ function Content({
         <Mapbox.Camera
           defaultSettings={{
             centerCoordinate: [...ATLANTA_CENTER],
-            zoomLevel: compact ? COMPACT_ZOOM : DEFAULT_ZOOM,
+            zoomLevel: DEFAULT_ZOOM,
           }}
         />
         {venues.map((venue) => (
@@ -180,10 +167,9 @@ function Content({
       {selectedVenue ? (
         <VenueCards
           venue={selectedVenue}
-          compact={compact}
           isSaved={isSaved}
           onToggleSave={toggle}
-          onOpenEvent={(id) => router.push(`/event/${id}?source=${eventSource}`)}
+          onOpenEvent={(id) => router.push(`/event/${id}?source=map`)}
         />
       ) : null}
 
@@ -227,23 +213,20 @@ function VenuePin({
 
 function VenueCards({
   venue,
-  compact,
   isSaved,
   onToggleSave,
   onOpenEvent,
 }: {
   readonly venue: MapVenue;
-  readonly compact: boolean;
   readonly isSaved: (id: string) => boolean;
   readonly onToggleSave: (id: string) => void;
   readonly onOpenEvent: (id: string) => void;
 }) {
   const { width } = useWindowDimensions();
-  // Compact cards sit inside a padded card, not the full screen width.
-  const cardWidth = width - space.md * 2 - (compact ? space.md * 2 : 0);
+  const cardWidth = width - space.md * 2;
 
   return (
-    <View style={[styles.venueSheet, compact ? styles.venueSheetCompact : null]}>
+    <View style={styles.venueSheet}>
       <Text style={styles.venueName} numberOfLines={1}>
         {venue.name}
       </Text>
@@ -325,10 +308,6 @@ const styles = StyleSheet.create({
     paddingTop: space.lg,
     position: "absolute",
     right: 0,
-  },
-  venueSheetCompact: {
-    paddingBottom: space.md,
-    paddingTop: space.md,
   },
   venueName: {
     ...typePreset.bodyBold14,
