@@ -4,6 +4,7 @@ import type { DbClient } from "@gulch/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { assertAdmin } from "@/lib/auth";
 import {
   addToList,
   getFeaturedState,
@@ -35,6 +36,8 @@ const invalid = (message: string | undefined): ActionResult => ({
   saved: false
 });
 
+// Every exported action awaits assertAdmin() before this runs — the service
+// role bypasses RLS, so identity must be proven inside the action itself.
 const requireServiceClient = (): DbClient => {
   const client = createServiceSupabase();
   if (!client) {
@@ -58,6 +61,7 @@ const researchSchema = z.object({
 
 export const saveResearch = async (_prev: ActionResult, formData: FormData): Promise<ActionResult> => {
   try {
+    await assertAdmin();
     const parsed = researchSchema.safeParse({
       label: formData.get("label"),
       url: formData.get("url")
@@ -151,6 +155,7 @@ const removeSupersededBannerImage = async (
 
 export const saveBanner = async (_prev: ActionResult, formData: FormData): Promise<ActionResult> => {
   try {
+    await assertAdmin();
     const parsed = bannerSchema.safeParse({
       enabled: formData.get("enabled") === "on",
       title: String(formData.get("title") ?? ""),
@@ -204,6 +209,7 @@ const editFeatured = async (
   edit: (ids: readonly string[], id: string) => readonly string[]
 ): Promise<ActionResult> => {
   try {
+    await assertAdmin();
     const parsed = featuredEditSchema.safeParse({ organizerId: formData.get("organizerId") });
     if (!parsed.success) {
       return invalid(parsed.error.issues[0]?.message);
@@ -254,6 +260,7 @@ export const toggleEventSponsored = async (
   formData: FormData
 ): Promise<ActionResult> => {
   try {
+    await assertAdmin();
     const parsed = sponsoredSchema.safeParse({
       eventId: formData.get("eventId"),
       sponsored: formData.get("sponsored")
