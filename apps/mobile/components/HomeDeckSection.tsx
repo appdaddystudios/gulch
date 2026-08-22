@@ -62,9 +62,23 @@ export function HomeDeckSection({ events, savedIds }: HomeDeckSectionProps) {
     return null;
   }
 
+  // The last card's save updates the toast and the deck in the same batch, so
+  // the empty state has to carry the toast too — otherwise the save that
+  // empties the deck is the one save that never confirms.
   if (deck.remaining === 0) {
     return (
-      <EmptyState title="You've saved them all" subtitle="Find more in Calendar" />
+      <>
+        <EmptyState
+          title="You've saved them all"
+          subtitle="Find more in Calendar"
+        />
+        <Toast
+          key={deck.toast.nonce}
+          message="Added to your favorites"
+          visible={deck.toast.visible}
+          onDismiss={deck.toast.dismiss}
+        />
+      </>
     );
   }
 
