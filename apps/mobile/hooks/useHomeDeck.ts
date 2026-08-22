@@ -19,6 +19,8 @@ import { captureEvent } from "../lib/telemetry";
 const eventsKey = (events: readonly EventListItem[]): string =>
   events.map((event) => event.id).join("|");
 
+const EMPTY_DECK: DeckState = { entries: [], head: 0, deckKey: 0 };
+
 // Owns the Home deck state (lib/deck reducer) and wires the swipe engine's
 // callbacks to saving, navigation and telemetry. The engine itself lives in
 // components/HomeDeckSection.
@@ -27,11 +29,15 @@ export function useHomeDeck(
   savedIds: ReadonlySet<string>,
 ) {
   const router = useRouter();
-  const { isSaved, toggle, toastVisible, toastNonce, dismissToast } =
+  const { isSaved, toggle, toastVisible, toastNonce, dismissToast, hydrated } =
     useSaveToast();
 
+  // Nothing is dealt until the device's saved ids are known: a deck built
+  // against the pre-hydration empty set would offer events the user has
+  // already favorited, and a swipe during that window used to freeze it that
+  // way for the session.
   const [state, setState] = useState<DeckState>(() =>
-    buildDeck(events, savedIds),
+    hydrated ? buildDeck(events, savedIds) : EMPTY_DECK,
   );
   // Mirror of `state` for the engine callbacks, which arrive as a burst from
   // the gesture/animation thread — each must see the previous one's result
@@ -66,7 +72,7 @@ export function useHomeDeck(
   const key = eventsKey(events);
   const changedUntouched =
     !touchedRef.current && (key !== seed.key || savedIds !== seed.savedIds);
-  if (changedUntouched) {
+  if (hydrated && changedUntouched) {
     setSeed({ key, savedIds });
     // Wholesale replacement → bump the key so the engine remounts rather
     // than keeping its old active index.

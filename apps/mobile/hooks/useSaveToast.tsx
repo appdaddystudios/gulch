@@ -6,7 +6,7 @@ import { useSavedEvents } from "./useSavedEvents";
 // Favorites, Map) confirms an add with the same "Added to your favorites"
 // toast. Only the transition to saved fires it — unsaves stay silent.
 export function useSaveToast() {
-  const { savedIds, isSaved, toggle } = useSavedEvents();
+  const { savedIds, isSaved, toggle, hydrated } = useSavedEvents();
   // The nonce keys the rendered Toast so back-to-back saves remount it —
   // re-setting visible=true alone would neither restart the 2s timer nor
   // re-announce to screen readers.
@@ -29,6 +29,7 @@ export function useSaveToast() {
 
   return {
     savedIds,
+    hydrated,
     isSaved,
     toggle: toggleWithToast,
     toastVisible: toast.visible,
