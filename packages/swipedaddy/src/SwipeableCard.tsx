@@ -157,6 +157,11 @@ function SwipeableCard({
     .onBegin(() => {
       'worklet';
       currentActiveIndex.value = Math.floor(activeIndex.value);
+      // Clear the previous gesture's verdict. Without this a gesture that
+      // never reaches onUpdate (a tap, or a pan that fails the activation
+      // offset) would be finalized against a stale commit threshold left by
+      // an earlier gated swipe or a reset(), and advance the deck.
+      nextActiveIndex.value = currentActiveIndex.value;
     })
     .onUpdate(event => {
       'worklet';
@@ -179,8 +184,8 @@ function SwipeableCard({
       'worklet';
       if (currentActiveIndex.value !== index) return;
 
-      if (nextActiveIndex.value === activeIndex.value + 1) {
-        const sign = Math.sign(event.translationX);
+      const sign = Math.sign(event.translationX);
+      if (nextActiveIndex.value === activeIndex.value + 1 && sign !== 0) {
         if (sign === 1) {
           if (isGated) {
             // Gated: bounce back and let the consumer decide the commit
