@@ -4,6 +4,8 @@ import {
   EVENT_SELECT,
   getEventDetail,
   groupEventsByWeek,
+  DECK_FETCH_MAX,
+  listDeckEvents,
   listEventsByIds,
   listTrendingEvents,
   listUpcomingEvents,
@@ -20,6 +22,7 @@ const makeBuilder = (result: QueryResult) => {
     "gte",
     "eq",
     "in",
+    "not",
     "order",
     "limit",
     "maybeSingle",
@@ -32,6 +35,29 @@ const makeBuilder = (result: QueryResult) => {
 
 const makeClient = (result: QueryResult) =>
   ({ from: () => makeBuilder(result) }) as never;
+
+// Same chainable shape, but records every call so query-shape tests can
+// assert filters without a live PostgREST.
+type RecordedCall = readonly [method: string, ...args: unknown[]];
+const makeRecordingClient = (result: QueryResult) => {
+  const calls: RecordedCall[] = [];
+  const builder: Record<string, unknown> = {};
+  for (const method of ["select", "gte", "eq", "not", "order", "limit"]) {
+    builder[method] = (...args: unknown[]) => {
+      calls.push([method, ...args]);
+      return builder;
+    };
+  }
+  builder.then = (resolve: (value: QueryResult) => unknown) => resolve(result);
+  const tables: string[] = [];
+  const client = {
+    from: (table: string) => {
+      tables.push(table);
+      return builder;
+    },
+  } as never;
+  return { client, calls, tables };
+};
 
 const baseRow = {
   webflow_item_id: "evt-1",
@@ -243,6 +269,81 @@ describe("listTrendingEvents", () => {
     const client = makeClient({ data: null, error: new Error("rls denied") });
     await expect(
       listTrendingEvents(client, { nowIso: "2026-06-01T00:00:00Z" }),
+    ).rejects.toThrow("rls denied");
+  });
+});
+
+describe("listDeckEvents", () => {
+  it("queries upcoming events with a ready image, soonest first, capped", async () => {
+    const { client, calls, tables } = makeRecordingClient({
+      data: [baseRow],
+      error: null,
+    });
+
+    await listDeckEvents(client, { limit: 7, nowIso: "2026-06-30T00:00:00Z" });
+
+    expect(tables).toEqual(["events"]);
+    expect(calls).toEqual([
+      ["select", EVENT_SELECT],
+      ["gte", "start_at", "2026-06-30T00:00:00Z"],
+      ["eq", "image_status", "ok"],
+      ["not", "image_url", "is", null],
+      ["order", "start_at", { ascending: true }],
+      ["limit", 7],
+    ]);
+  });
+
+  it("fetches past the ids the deck will exclude", async () => {
+    const { client, calls } = makeRecordingClient({ data: [], error: null });
+
+    await listDeckEvents(client, { limit: 20, excludeCount: 15 });
+
+    expect(calls).toContainEqual(["limit", 35]);
+  });
+
+  it("caps the over-fetch at DECK_FETCH_MAX", async () => {
+    const { client, calls } = makeRecordingClient({ data: [], error: null });
+
+    await listDeckEvents(client, { limit: 20, excludeCount: 5000 });
+
+    expect(calls).toContainEqual(["limit", DECK_FETCH_MAX]);
+  });
+
+  it("defaults to a limit of 20 and the current time", async () => {
+    const before = new Date().toISOString();
+    const { client, calls } = makeRecordingClient({ data: [], error: null });
+
+    await listDeckEvents(client);
+
+    const gte = calls.find(([method]) => method === "gte");
+    expect(gte?.[1]).toBe("start_at");
+    expect(String(gte?.[2]) >= before).toBe(true);
+    expect(calls.find(([method]) => method === "limit")).toEqual(["limit", 20]);
+  });
+
+  it("maps rows through the shared event schema", async () => {
+    const result = await listDeckEvents(
+      makeClient({ data: [{ ...baseRow, editors_pick: true }], error: null }),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "evt-1",
+      imageUrl: "https://cdn.example.com/evt-1.jpg",
+      imageStatus: "ok",
+      editorsPick: true,
+      organizerName: "GULCH Magazine",
+    });
+  });
+
+  it("returns an empty list when data is null", async () => {
+    await expect(
+      listDeckEvents(makeClient({ data: null, error: null })),
+    ).resolves.toEqual([]);
+  });
+
+  it("throws when Supabase returns an error", async () => {
+    await expect(
+      listDeckEvents(makeClient({ data: null, error: new Error("rls denied") })),
     ).rejects.toThrow("rls denied");
   });
 });

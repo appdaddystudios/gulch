@@ -146,6 +146,45 @@ export const listUpcomingEvents = async (
   return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
 };
 
+type ListDeckOptions = {
+  readonly limit?: number;
+  readonly nowIso?: string;
+  /** Ids the deck will drop, so the fetch reaches past them. */
+  readonly excludeCount?: number;
+};
+
+// Ceiling on the over-fetch below. A user with more saved events than this
+// among the soonest ones gets a shorter deck rather than an unbounded query.
+export const DECK_FETCH_MAX = 100;
+
+// Home swipe deck: upcoming events that have a usable hero image (R7),
+// soonest first. The deck reducer drops already-saved ids AFTER this query,
+// so the row limit has to reach past them — otherwise a returning user who
+// saved the soonest events gets a short (or empty) deck while later unsaved
+// events exist.
+export const listDeckEvents = async (
+  client: DbClient,
+  { limit = 20, nowIso, excludeCount = 0 }: ListDeckOptions = {},
+): Promise<readonly EventListItem[]> => {
+  const startBoundary = nowIso ?? new Date().toISOString();
+  const fetchLimit = Math.min(limit + excludeCount, DECK_FETCH_MAX);
+
+  const { data, error } = await client
+    .from("events")
+    .select(EVENT_SELECT)
+    .gte("start_at", startBoundary)
+    .eq("image_status", "ok")
+    .not("image_url", "is", null)
+    .order("start_at", { ascending: true })
+    .limit(fetchLimit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => toEventListItem(rawEventSchema.parse(row)));
+};
+
 const rawTrendingRowSchema = z.object({
   saves: z.number(),
   events: rawEventSchema,

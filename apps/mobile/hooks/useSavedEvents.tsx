@@ -23,12 +23,17 @@ type SavedEventsValue = {
   readonly savedIds: ReadonlySet<string>;
   readonly isSaved: (id: string) => boolean;
   readonly toggle: (id: string) => void;
+  /** False until the device's saved ids have been read back. */
+  readonly hydrated: boolean;
 };
 
 const SavedEventsContext = createContext<SavedEventsValue | null>(null);
 
 export function SavedEventsProvider({ children }: { readonly children: ReactNode }) {
   const [ids, setIds] = useState<readonly string[]>([]);
+  // Consumers that deal from savedIds (the home deck) must not act on the
+  // empty pre-hydration set.
+  const [hydrated, setHydrated] = useState(false);
 
   // Hydrate once from device storage.
   useEffect(() => {
@@ -41,6 +46,11 @@ export function SavedEventsProvider({ children }: { readonly children: ReactNode
       })
       .catch(() => {
         // Ignore read errors — start with an empty lineup.
+      })
+      .finally(() => {
+        if (active) {
+          setHydrated(true);
+        }
       });
     return () => {
       active = false;
@@ -78,8 +88,8 @@ export function SavedEventsProvider({ children }: { readonly children: ReactNode
 
   const value = useMemo<SavedEventsValue>(() => {
     const set = new Set(ids);
-    return { savedIds: set, isSaved: (id) => set.has(id), toggle };
-  }, [ids, toggle]);
+    return { savedIds: set, isSaved: (id) => set.has(id), toggle, hydrated };
+  }, [hydrated, ids, toggle]);
 
   return (
     <SavedEventsContext.Provider value={value}>
