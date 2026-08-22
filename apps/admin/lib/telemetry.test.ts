@@ -2,14 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { captureEvent, captureException, initializeTelemetry, shutdownTelemetry } from "./telemetry";
 
-vi.mock("@sentry/nextjs", () => ({
-  captureException: vi.fn(),
-  init: vi.fn()
-}));
+const posthogCapture = vi.hoisted(() => vi.fn());
 
 vi.mock("posthog-node", () => ({
   PostHog: vi.fn().mockImplementation(() => ({
-    capture: vi.fn(),
+    capture: posthogCapture,
     shutdown: vi.fn().mockResolvedValue(undefined)
   }))
 }));
@@ -21,29 +18,15 @@ describe("telemetry", () => {
   });
 
   it("is a no-op when telemetry env is absent", () => {
-    const previousDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
     const previousPostHogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
-
-    delete process.env.EXPO_PUBLIC_SENTRY_DSN;
     delete process.env.EXPO_PUBLIC_POSTHOG_KEY;
 
-    expect(initializeTelemetry()).toEqual({
-      sentryEnabled: false,
-      postHogEnabled: false
-    });
-    expect(initializeTelemetry({})).toEqual({
-      sentryEnabled: false,
-      postHogEnabled: false
-    });
+    expect(initializeTelemetry()).toEqual({ postHogEnabled: false });
+    expect(initializeTelemetry({})).toEqual({ postHogEnabled: false });
 
     expect(() => captureException(new Error("boom"))).not.toThrow();
     expect(() => captureEvent("admin.loaded")).not.toThrow();
-
-    if (previousDsn) {
-      process.env.EXPO_PUBLIC_SENTRY_DSN = previousDsn;
-    } else {
-      delete process.env.EXPO_PUBLIC_SENTRY_DSN;
-    }
+    expect(posthogCapture).not.toHaveBeenCalled();
 
     if (previousPostHogKey) {
       process.env.EXPO_PUBLIC_POSTHOG_KEY = previousPostHogKey;
@@ -52,25 +35,26 @@ describe("telemetry", () => {
     }
   });
 
-  it("initializes wrappers when keys are present", async () => {
-    const sentry = await import("@sentry/nextjs");
+  it("initializes PostHog when a key is present and routes errors to it", async () => {
     const posthog = await import("posthog-node");
 
-    expect(
-      initializeTelemetry({
-        EXPO_PUBLIC_SENTRY_DSN: "https://example@sentry.io/1",
-        EXPO_PUBLIC_POSTHOG_KEY: "ph_test"
-      })
-    ).toEqual({
-      sentryEnabled: true,
+    expect(initializeTelemetry({ EXPO_PUBLIC_POSTHOG_KEY: "ph_test" })).toEqual({
       postHogEnabled: true
     });
 
     captureException(new Error("tracked"));
     captureEvent("admin.loaded", { connected: true });
 
-    expect(sentry.init).toHaveBeenCalledWith({ dsn: "https://example@sentry.io/1" });
-    expect(sentry.captureException).toHaveBeenCalled();
     expect(posthog.PostHog).toHaveBeenCalledWith("ph_test");
+    expect(posthogCapture).toHaveBeenCalledWith({
+      distinctId: "gulch-admin",
+      event: "$exception",
+      properties: { $exception_message: "tracked", $exception_type: "Error" }
+    });
+    expect(posthogCapture).toHaveBeenCalledWith({
+      distinctId: "gulch-admin",
+      event: "admin.loaded",
+      properties: { connected: true }
+    });
   });
 });

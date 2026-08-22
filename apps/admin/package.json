@@ -13,7 +13,6 @@
   "dependencies": {
     "@clerk/nextjs": "^7.8.0",
     "@gulch/db": "workspace:*",
-    "@sentry/nextjs": "^10.32.0",
     "@supabase/supabase-js": "^2.50.3",
     "next": "^16.2.9",
     "posthog-node": "^5.12.2",
