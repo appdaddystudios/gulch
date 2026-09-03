@@ -33,6 +33,7 @@
 | `survey_banner_tapped` | — | Home research banner button (also emits `link_opened`) |
 | `video_played` | `event_id` | Event details "Watch video" tap (Instagram embed player) |
 | `banner_ad_tapped` | `kind` (`image` \| `text`) | Home banner-ad slot tap (link domain arrives via `link_opened`) |
+| `favorites_see_more_tapped` | — | Home "See More Favorites" card at the end of the Your Favorites carousel (shown whenever ≥1 favorite) |
 
 ## Conventions
 
