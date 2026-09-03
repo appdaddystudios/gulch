@@ -34,7 +34,7 @@ import {
   listUpcomingEvents,
   type EventListItem,
 } from "../../lib/events";
-import { formatEventCardDate } from "../../lib/format";
+import { formatEventCardDate, formatFavoriteCount } from "../../lib/format";
 import {
   getHomeConfig,
   HOME_CONFIG_DEFAULTS,
@@ -262,9 +262,8 @@ export default function HomeScreen() {
         key={event.id}
         title={event.name}
         subtitle={
-          showSaves && event.saveCount > 0
-            ? `${event.saveCount} ${event.saveCount === 1 ? "save" : "saves"}`
-            : formatEventCardDate(event.startAt)
+          (showSaves ? formatFavoriteCount(event.saveCount) : null) ??
+          formatEventCardDate(event.startAt)
         }
         onPress={() => router.push(`/event/${event.id}?source=home`)}
       />

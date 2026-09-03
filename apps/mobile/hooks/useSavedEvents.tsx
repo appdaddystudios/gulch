@@ -79,8 +79,20 @@ export function SavedEventsProvider({ children }: { readonly children: ReactNode
             p_saved: added,
           }),
         )
-        .then(null, () => {
-          // Counter drift on failure is acceptable; saves stay device-local.
+        .then((result) => {
+          // supabase-js resolves with `{ error }` rather than rejecting, so a
+          // missing or failing RPC is invisible unless it is checked here.
+          // Production stays best-effort (counter drift is acceptable; saves
+          // are device-local), but dev builds must see it.
+          if (result?.error && __DEV__) {
+            console.warn(
+              "[saves] set_event_saved failed:",
+              result.error.message,
+            );
+          }
+        })
+        .catch(() => {
+          // Network failure: same best-effort policy as above.
         });
       return next;
     });
