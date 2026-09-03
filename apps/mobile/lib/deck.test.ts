@@ -33,6 +33,8 @@ const mk = (
   externalLink: null,
   organizerName: null,
   locationName: null,
+  latitude: null,
+  longitude: null,
   ...overrides,
 });
 

@@ -99,8 +99,23 @@ describe("listUpcomingEvents", () => {
         externalLink: "https://instagram.com/p/abc",
         organizerName: "GULCH Magazine",
         locationName: "El Sótano",
+        latitude: null,
+        longitude: null,
       },
     ]);
+  });
+
+  it("reads venue coordinates from the location embed", async () => {
+    const row = {
+      ...baseRow,
+      locations: { name: "El Sótano", latitude: 33.7489, longitude: -84.3879 },
+    };
+
+    const result = await listUpcomingEvents(
+      makeClient({ data: [row], error: null }),
+    );
+
+    expect(result[0]).toMatchObject({ latitude: 33.7489, longitude: -84.3879 });
   });
 
   it("defaults editorsPick to false and reads it when set", async () => {
@@ -365,6 +380,8 @@ describe("groupEventsByWeek", () => {
     externalLink: null,
     organizerName: null,
     locationName: null,
+    latitude: null,
+    longitude: null,
   });
 
   it("buckets events into week sections, oldest first", () => {

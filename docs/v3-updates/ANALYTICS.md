@@ -24,7 +24,7 @@
 |---|---|---|
 | `event_viewed` | `event_id`, `event_name`, `source` (`home` \| `calendar` \| `map` \| `favorites` \| `null` for deep links; `lineup` in pre-V3 data) | `app/event/[id].tsx` once per successful load |
 | `event_saved` / `event_unsaved` | `event_id` | `hooks/useSavedEvents.tsx` toggle |
-| `link_opened` | `domain` (hostname only), `context` (`organizer_instagram` \| `research_banner` \| `event_share` \| `event_more_information` \| `banner_ad` \| `null`) | `lib/openLink.ts` — every external link |
+| `link_opened` | `domain` (hostname only; the URL scheme — `maps`, `comgooglemaps`, `geo` — for maps-app links), `context` (`organizer_instagram` \| `research_banner` \| `event_share` \| `event_more_information` \| `banner_ad` \| `event_location` \| `null`), `provider` (`apple` \| `google`, only with `event_location`) | `lib/openLink.ts` — every external link; `lib/openInMaps.ts` for the Event Details venue tap |
 | `search_performed` | `query_length`, `result_count` (never the query text) | Calendar search, debounced 1s |
 | `map_opened` | — | Map tab mount |
 | `map_pin_tapped` | `venue_id`, `venue_name`, `event_count` | Venue pin select (not deselect) |
@@ -34,6 +34,8 @@
 | `video_played` | `event_id` | Event details "Watch video" tap (Instagram embed player) |
 | `banner_ad_tapped` | `kind` (`image` \| `text`) | Home banner-ad slot tap (link domain arrives via `link_opened`) |
 | `favorites_see_more_tapped` | — | Home "See More Favorites" card at the end of the Your Favorites carousel (shown whenever ≥1 favorite) |
+| `calendar_export_tapped` | — | Event Details "Add to Calendar" button |
+| `calendar_export_result` | `result` (`added` \| `cancelled` \| `unknown` \| `error`; Android always reports `unknown` because the OS sheet doesn't say whether the user saved) | After the system New Event sheet closes |
 
 ## Conventions
 
