@@ -74,5 +74,8 @@ note.
 (`config.hintDistanceRatio` × window width each way, default 0.18) and springs
 home. It fires no swipe callbacks and never touches `activeIndex` — it exists
 for a first-run "you can swipe this" demo. A gesture that begins mid-nudge
-wins: the pan's `onBegin` cancels any running translation animation before
-tracking the finger. Upstream candidate alongside the six fixes above.
+wins: the pan's `onBegin` cancels any running translation animation and
+carries the card's current offset into the drag. The reverse is refused:
+`hint()` returns `false` and does nothing while the active card is under a
+finger (or has already exited), so a consumer only records "hint shown" when
+it was. Upstream candidate alongside the six fixes above.

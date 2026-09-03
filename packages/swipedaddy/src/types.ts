@@ -37,9 +37,11 @@ export type SwipeDeckRef = {
   /**
    * Nudges the active card right, back, left, back — a "you can swipe this"
    * demo. Fires no callbacks and leaves `activeIndex` untouched; a gesture
-   * that starts mid-nudge takes over.
+   * that starts mid-nudge takes over. Returns false — and does nothing — when
+   * the active card is already under a finger or has left the deck, so a
+   * consumer can tell whether the nudge was actually shown.
    */
-  hint: () => void;
+  hint: () => boolean;
   /**
    * UI-thread observable position — read it from worklets/animated styles to
    * animate other UI in sync with swipes. For plain React state, use

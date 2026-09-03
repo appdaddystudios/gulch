@@ -123,16 +123,17 @@ export function HomeDeckSection({
       if (verdict === "skip") {
         return;
       }
-      // The engine ref is the last word: no mounted deck, no hint, no flag.
-      const engine = deckRef.current;
-      if (verdict === "run" && !engine) {
+      if (verdict === "mark-only") {
+        void markDeckHintSeen();
+        return;
+      }
+      // The engine is the last word: no mounted deck, or a card already
+      // under the user's finger, means no hint — and then no flag either.
+      if (!deckRef.current?.hint()) {
         return;
       }
       void markDeckHintSeen();
-      if (verdict === "run" && engine) {
-        engine.hint();
-        captureEvent("deck_hint_shown");
-      }
+      captureEvent("deck_hint_shown");
     };
     const timer = setTimeout(() => {
       void run();

@@ -52,7 +52,7 @@ export function SwipeDeck<T>(
   }, [activeIndex, refs]);
 
   const hint = useCallback(() => {
-    refs[Math.floor(activeIndex.value)]?.current?.hint();
+    return refs[Math.floor(activeIndex.value)]?.current?.hint() ?? false;
   }, [activeIndex, refs]);
 
   useImperativeHandle(ref, () => {

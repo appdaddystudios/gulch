@@ -44,7 +44,8 @@ export type SwipeableCardRefType = {
   swipeRight: () => void;
   swipeLeft: () => void;
   reset: () => void;
-  hint: () => void;
+  /** False when suppressed (card under a finger, or already exited). */
+  hint: () => boolean;
 };
 
 /** `hint()` timing: out, back, out the other way, then the config spring home. */
@@ -82,6 +83,10 @@ function SwipeableCard({
   // the finger instead of snapping to the touch-down origin.
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
+  // True from the active card's onBegin until its onFinalize. hint() checks it
+  // so a nudge never starts on a card the user is already holding — the
+  // sequence could carry the card across zero and flip the commit verdict.
+  const dragging = useSharedValue(false);
   // True once this card has actually left the deck. A nonzero translation is
   // NOT the same thing — a card being dragged, or springing back from a failed
   // or gated swipe, is still very much in play.
@@ -149,7 +154,7 @@ function SwipeableCard({
   // Demo nudge: right, back, left, back. Only translateX moves, so rotation
   // and `progress` follow for free. No commit, no callbacks, no index change.
   const hint = useCallback(() => {
-    if (exited.value) return;
+    if (exited.value || dragging.value) return false;
     const distance = width * config.hintDistanceRatio;
     cancelAnimation(translateX);
     translateX.value = withSequence(
@@ -158,7 +163,8 @@ function SwipeableCard({
       withTiming(-distance, { duration: HINT_OUT_MS }),
       withSpring(0, spring),
     );
-  }, [config.hintDistanceRatio, exited, spring, translateX, width]);
+    return true;
+  }, [config.hintDistanceRatio, dragging, exited, spring, translateX, width]);
 
   const rightIntent = useCallback(() => {
     onSwipeRightIntent?.();
@@ -225,6 +231,7 @@ function SwipeableCard({
         cancelAnimation(translateY);
         startX.value = translateX.value;
         startY.value = translateY.value;
+        dragging.value = true;
       }
       // Clear the previous gesture's verdict. Without this a gesture that
       // never reaches onUpdate (a tap, or a pan that fails the activation
@@ -295,6 +302,7 @@ function SwipeableCard({
     .onFinalize(() => {
       'worklet';
       if (currentActiveIndex.value !== index) return;
+      dragging.value = false;
       if (committed.value) return;
 
       translateX.value = withSpring(0, spring);
