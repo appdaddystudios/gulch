@@ -377,8 +377,8 @@ export default function HomeScreen() {
         </Section>
 
         <PromoBanner
-          title="Participate in Research"
-          body="Take the survey for a chance to win a $100 Visa gift card, all while supporting the community."
+          title="Visual Art Directory"
+          body="GULCH’s Atlanta Visual Art Directory is a printed booklet, mapping local arts orgs and events"
           tone="dark"
           onPress={openSurvey}
           action={
