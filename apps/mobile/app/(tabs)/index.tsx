@@ -18,6 +18,7 @@ import { HomeDeckSection } from "../../components/HomeDeckSection";
 import { SearchIcon } from "../../components/icons";
 import { SearchBar } from "../../components/SearchBar";
 import { SectionTitle } from "../../components/SectionTitle";
+import { SeeMoreCard } from "../../components/SeeMoreCard";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { DECK_CAP } from "../../lib/deck";
@@ -210,6 +211,10 @@ export default function HomeScreen() {
     : undefined;
 
   const openSearch = () => router.push("/calendar");
+  const openFavorites = () => {
+    captureEvent("favorites_see_more_tapped");
+    router.push("/favorites");
+  };
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setHeaderSearch(event.nativeEvent.contentOffset.y > SEARCH_COLLAPSE_OFFSET);
   };
@@ -255,14 +260,8 @@ export default function HomeScreen() {
       >
         <SearchBar onPress={openSearch} />
 
-        {bannerAd ? <BannerAdSlot ad={bannerAd} onPress={openBannerAd} /> : null}
-
-        <Section title="Trending">
-          <Carousel state={state.status} emptyText="Nothing trending yet.">
-            {renderEventCards(trendingEvents, { showSaves: true })}
-          </Carousel>
-        </Section>
-
+        {/* The deck leads (device pass: it took the banner ad's slot); it
+            renders nothing until dealt, so Trending simply moves up. */}
         <HomeDeckSection
           events={deckEvents}
           savedIds={savedIds}
@@ -272,12 +271,31 @@ export default function HomeScreen() {
           savedCountMatches={deckSavedCount === savedCount}
         />
 
+        <Section title="Trending">
+          <Carousel state={state.status} emptyText="Nothing trending yet.">
+            {renderEventCards(trendingEvents, { showSaves: true })}
+          </Carousel>
+        </Section>
+
+        {bannerAd ? <BannerAdSlot ad={bannerAd} onPress={openBannerAd} /> : null}
+
         <Section title="Your Favorites">
           <Carousel
             state={state.status}
             emptyText="Tap the heart on any event to see it here."
           >
-            {renderEventCards(favoriteEvents)}
+            {[
+              ...renderEventCards(favoriteEvents),
+              ...(favoriteEvents.length > 0
+                ? [
+                    <SeeMoreCard
+                      key="see-more-favorites"
+                      label="See More Favorites"
+                      onPress={openFavorites}
+                    />,
+                  ]
+                : []),
+            ]}
           </Carousel>
         </Section>
 
