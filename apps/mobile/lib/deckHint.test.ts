@@ -33,11 +33,15 @@ beforeEach(() => {
 });
 
 describe("isDeckHintable", () => {
-  const live = { dealt: true, interactive: true, remaining: 3 };
+  const live = { dealt: true, interactive: true, remaining: 3, focused: true };
 
-  it("is true for a dealt, interactive deck with cards left", () => {
+  it("is true for a dealt, interactive, on-screen deck with cards left", () => {
     expect(isDeckHintable(live)).toBe(true);
     expect(isDeckHintable({ ...live, remaining: 1 })).toBe(true);
+  });
+
+  it("is false while Home is not the focused route", () => {
+    expect(isDeckHintable({ ...live, focused: false })).toBe(false);
   });
 
   it("is false while nothing is dealt", () => {

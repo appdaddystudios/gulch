@@ -29,17 +29,22 @@ export type DeckAvailability = {
   readonly dealt: boolean;
   readonly interactive: boolean;
   readonly remaining: number;
+  /** Home is the focused route — the deck is actually on screen. */
+  readonly focused: boolean;
 };
 
-// A card the engine can actually nudge: dealt, swipeable, and still on the
-// table. `remaining` matters on its own — the deck can empty (last card saved)
+// A card the engine can actually nudge: dealt, swipeable, still on the table,
+// and on screen. `remaining` and `focused` matter on their own — the deck can
+// empty (last card saved) or Home can lose focus (card tapped, tab switched)
 // before the hint's delay elapses, and a nudge nobody could see must not
 // consume the one-time flag.
 export const isDeckHintable = ({
   dealt,
   interactive,
   remaining,
-}: DeckAvailability): boolean => dealt && interactive && remaining > 0;
+  focused,
+}: DeckAvailability): boolean =>
+  dealt && interactive && remaining > 0 && focused;
 
 export type DeckHintVerdict = "run" | "mark-only" | "skip";
 

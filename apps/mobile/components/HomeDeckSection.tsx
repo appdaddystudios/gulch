@@ -3,7 +3,8 @@ import {
   type SwipeDeckConfig,
   type SwipeDeckRef,
 } from "@fontezbrooks/swipedaddy";
-import { useEffect, useRef } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   StyleSheet,
@@ -82,9 +83,18 @@ export function HomeDeckSection({
   // left, exactly once per install. The flag is written the moment the nudge
   // starts so an interrupted animation can't replay it forever; Reduce Motion
   // still writes the flag, just without the motion. `hintable` drops to false
-  // when the deck empties or goes inert, which cancels a pending hint — a
-  // nudge nobody could see must neither consume the flag nor count as shown.
-  const hintable = isDeckHintable(deck);
+  // when the deck empties, goes inert, or Home leaves the screen (Tabs keep
+  // Home mounted, so a route change alone would not clean this up) — any of
+  // those cancels a pending hint; a nudge nobody could see must neither
+  // consume the flag nor count as shown.
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
+  const hintable = isDeckHintable({ ...deck, focused });
   useEffect(() => {
     if (!hintable) {
       return;
