@@ -60,7 +60,7 @@ const HINT_DELAY_MS = 600;
 // hint below would promise an interaction nobody could perform.
 const A11Y_ACTIONS = [
   { name: "activate", label: "Open event" },
-  { name: "save", label: "Save event" },
+  { name: "save", label: "Favorite event" },
   { name: "skip", label: "Skip event" },
 ];
 
@@ -203,7 +203,7 @@ export function HomeDeckSection({
     <View
       accessible
       accessibilityActions={A11Y_ACTIONS}
-      accessibilityHint="Swipe right to save, left to skip, double tap to open"
+      accessibilityHint="Swipe right to favorite, left to skip, double tap to open"
       accessibilityLabel={label}
       accessibilityState={{ busy: !deck.interactive }}
       onAccessibilityAction={onAccessibilityAction}
