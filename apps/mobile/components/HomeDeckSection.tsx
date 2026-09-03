@@ -12,7 +12,10 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import type { AccessibilityActionEvent } from "react-native";
+import type {
+  AccessibilityActionEvent,
+  LayoutChangeEvent,
+} from "react-native";
 
 import { DeckCard, deckCardLabel } from "./DeckCard";
 import { EmptyState } from "./EmptyState";
@@ -66,6 +69,10 @@ type HomeDeckSectionProps = {
   readonly savedIds: ReadonlySet<string>;
   /** The fetched page was queried with the current saved-id count. */
   readonly savedCountMatches: boolean;
+  /** The section intersects the parent scroll viewport (hint gating). */
+  readonly visible: boolean;
+  /** Layout of the dealt deck, relative to the parent scroll content. */
+  readonly onLayout: (event: LayoutChangeEvent) => void;
 };
 
 // Home V3.1 swipe deck: right = save, left = back to the bottom, tap = open.
@@ -75,6 +82,8 @@ export function HomeDeckSection({
   events,
   savedIds,
   savedCountMatches,
+  visible,
+  onLayout,
 }: HomeDeckSectionProps) {
   const deckRef = useRef<SwipeDeckRef>(null);
   const { width } = useWindowDimensions();
@@ -105,7 +114,7 @@ export function HomeDeckSection({
     });
     return () => subscription.remove();
   }, []);
-  const hintable = isDeckHintable({ ...deck, focused, foreground });
+  const hintable = isDeckHintable({ ...deck, focused, foreground, visible });
   useEffect(() => {
     if (!hintable) {
       return;
@@ -201,6 +210,7 @@ export function HomeDeckSection({
       // Inert while an untouched deck awaits its saved-aware page (see
       // useHomeDeck.interactive); the cards stay visible so nothing flashes.
       pointerEvents={deck.interactive ? "auto" : "none"}
+      onLayout={onLayout}
       style={[styles.deck, { height }]}
     >
       {/* Deck and toast are siblings keyed by separate counters; both start at

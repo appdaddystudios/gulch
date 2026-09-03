@@ -17,6 +17,7 @@ import {
   DECK_HINT_KEY,
   hasSeenDeckHint,
   isDeckHintable,
+  isFrameInViewport,
   markDeckHintSeen,
   shouldRunDeckHint,
   type DeckHintInput,
@@ -39,6 +40,7 @@ describe("isDeckHintable", () => {
     remaining: 3,
     focused: true,
     foreground: true,
+    visible: true,
   };
 
   it("is true for a dealt, interactive, on-screen deck with cards left", () => {
@@ -54,6 +56,10 @@ describe("isDeckHintable", () => {
     expect(isDeckHintable({ ...live, foreground: false })).toBe(false);
   });
 
+  it("is false while the deck is scrolled out of the viewport", () => {
+    expect(isDeckHintable({ ...live, visible: false })).toBe(false);
+  });
+
   it("is false while nothing is dealt", () => {
     expect(isDeckHintable({ ...live, dealt: false })).toBe(false);
   });
@@ -64,6 +70,26 @@ describe("isDeckHintable", () => {
 
   it("is false once every card has left the deck", () => {
     expect(isDeckHintable({ ...live, remaining: 0 })).toBe(false);
+  });
+});
+
+describe("isFrameInViewport", () => {
+  const deck = { y: 100, height: 400 };
+
+  it("is false before the deck or the viewport has been measured", () => {
+    expect(isFrameInViewport(null, 0, 800)).toBe(false);
+    expect(isFrameInViewport(deck, 0, 0)).toBe(false);
+  });
+
+  it("is true when the deck is fully or partly inside the viewport", () => {
+    expect(isFrameInViewport(deck, 0, 800)).toBe(true);
+    expect(isFrameInViewport(deck, 450, 800)).toBe(true); // bottom edge peeks
+    expect(isFrameInViewport(deck, 0, 150)).toBe(true); // top edge peeks
+  });
+
+  it("is false once the deck is entirely above or below the viewport", () => {
+    expect(isFrameInViewport(deck, 500, 800)).toBe(false); // scrolled past
+    expect(isFrameInViewport(deck, 0, 100)).toBe(false); // not reached yet
   });
 });
 

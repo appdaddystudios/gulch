@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,7 +9,11 @@ import {
   Text,
   View,
 } from "react-native";
-import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import type {
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+} from "react-native";
 
 import { BannerAdSlot, BannerCard, PromoBanner } from "../../components/Banner";
 import { Button } from "../../components/Button";
@@ -22,6 +26,7 @@ import { SeeMoreCard } from "../../components/SeeMoreCard";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { DECK_CAP } from "../../lib/deck";
+import { isFrameInViewport, type LayoutFrame } from "../../lib/deckHint";
 import {
   listDeckEvents,
   listEventsByIds,
@@ -215,8 +220,37 @@ export default function HomeScreen() {
     captureEvent("favorites_see_more_tapped");
     router.push("/favorites");
   };
+  // Whether the deck is on screen, for its one-time hint. Scroll offset lives
+  // in a ref and only the boolean is state, so scrolling doesn't re-render
+  // Home every frame — it re-renders only when the deck enters or leaves.
+  const scrollYRef = useRef(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [deckFrame, setDeckFrame] = useState<LayoutFrame | null>(null);
+  const [deckInView, setDeckInView] = useState(false);
+  const syncDeckInView = useCallback(
+    (scrollY: number, frame: LayoutFrame | null, viewport: number) => {
+      const inView = isFrameInViewport(frame, scrollY, viewport);
+      setDeckInView((prev) => (prev === inView ? prev : inView));
+    },
+    [],
+  );
+  useEffect(() => {
+    syncDeckInView(scrollYRef.current, deckFrame, viewportHeight);
+  }, [deckFrame, viewportHeight, syncDeckInView]);
+  const onViewportLayout = (event: LayoutChangeEvent) => {
+    setViewportHeight(event.nativeEvent.layout.height);
+  };
+  const onDeckLayout = (event: LayoutChangeEvent) => {
+    const { y, height } = event.nativeEvent.layout;
+    setDeckFrame((prev) =>
+      prev && prev.y === y && prev.height === height ? prev : { y, height },
+    );
+  };
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setHeaderSearch(event.nativeEvent.contentOffset.y > SEARCH_COLLAPSE_OFFSET);
+    const y = event.nativeEvent.contentOffset.y;
+    scrollYRef.current = y;
+    setHeaderSearch(y > SEARCH_COLLAPSE_OFFSET);
+    syncDeckInView(y, deckFrame, viewportHeight);
   };
 
   const renderEventCards = (
@@ -254,6 +288,7 @@ export default function HomeScreen() {
       />
       <ScrollView
         contentContainerStyle={styles.content}
+        onLayout={onViewportLayout}
         onScroll={handleScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
@@ -269,6 +304,8 @@ export default function HomeScreen() {
           // first request can land before hydration, carrying rows that stop
           // short of the ids the deck will drop.
           savedCountMatches={deckSavedCount === savedCount}
+          visible={deckInView}
+          onLayout={onDeckLayout}
         />
 
         <Section title="Trending">

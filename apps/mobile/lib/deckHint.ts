@@ -33,22 +33,45 @@ export type DeckAvailability = {
   readonly focused: boolean;
   /** The app is in the foreground (AppState "active"). */
   readonly foreground: boolean;
+  /** The deck intersects Home's scroll viewport (see isFrameInViewport). */
+  readonly visible: boolean;
 };
 
 // A card the engine can actually nudge: dealt, swipeable, still on the table,
-// on screen, and in a foregrounded app. `remaining`, `focused` and
-// `foreground` matter on their own — the deck can empty (last card saved),
-// Home can lose focus (card tapped, tab switched) or the app can be
-// backgrounded/locked before the hint's delay elapses, and a nudge nobody
-// could see must not consume the one-time flag.
+// on a focused screen, in a foregrounded app, and inside the viewport. Each
+// of the last four matters on its own — the deck can empty (last card saved),
+// Home can lose focus (card tapped, tab switched), the app can be
+// backgrounded/locked, or the deck can be scrolled away before the hint's
+// delay elapses, and a nudge nobody could see must not consume the one-time
+// flag.
 export const isDeckHintable = ({
   dealt,
   interactive,
   remaining,
   focused,
   foreground,
+  visible,
 }: DeckAvailability): boolean =>
-  dealt && interactive && remaining > 0 && focused && foreground;
+  dealt && interactive && remaining > 0 && focused && foreground && visible;
+
+export type LayoutFrame = {
+  readonly y: number;
+  readonly height: number;
+};
+
+// Whether a child laid out at `frame` (y relative to the scroll content) is
+// at least partly inside a viewport of `viewportHeight` scrolled to
+// `scrollY`. Unmeasured (null frame) or unlaid-out (zero viewport) means not
+// visible — the hint waits for layout rather than guessing.
+export const isFrameInViewport = (
+  frame: LayoutFrame | null,
+  scrollY: number,
+  viewportHeight: number,
+): boolean =>
+  frame !== null &&
+  viewportHeight > 0 &&
+  frame.y + frame.height > scrollY &&
+  frame.y < scrollY + viewportHeight;
 
 export type DeckHintVerdict = "run" | "mark-only" | "skip";
 
