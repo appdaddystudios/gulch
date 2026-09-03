@@ -22,15 +22,15 @@
         {
           "image": "./assets/splash.png",
           "resizeMode": "cover",
-          "backgroundColor": "#B87832"
+          "backgroundColor": "#B87832",
+          "enableFullScreenImage_legacy": true,
+          "android": {
+            "image": "./assets/icon.png",
+            "imageWidth": 200
+          }
         }
       ]
     ],
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "cover",
-      "backgroundColor": "#B87832"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gulch.mobile",
