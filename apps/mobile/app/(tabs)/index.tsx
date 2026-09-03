@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,18 +24,20 @@ import { SearchIcon } from "../../components/icons";
 import { SearchBar } from "../../components/SearchBar";
 import { SectionTitle } from "../../components/SectionTitle";
 import { SeeMoreCard } from "../../components/SeeMoreCard";
+import { useDeckPage } from "../../hooks/useDeckPage";
+import { useEventsByIds } from "../../hooks/useEventsByIds";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { DECK_CAP } from "../../lib/deck";
 import { isFrameInViewport, type LayoutFrame } from "../../lib/deckHint";
 import {
   listDeckEvents,
-  listEventsByIds,
   listTrendingEvents,
   listUpcomingEvents,
   type EventListItem,
 } from "../../lib/events";
 import { formatEventCardDate, formatFavoriteCount } from "../../lib/format";
+import { pickEvents, type EventMap } from "../../lib/homeCache";
 import {
   getHomeConfig,
   HOME_CONFIG_DEFAULTS,
@@ -55,8 +58,7 @@ const SEARCH_COLLAPSE_OFFSET = 72;
 const FAVORITES_LIMIT = 6;
 const RECENT_LIMIT = 6;
 // Bounds the `.in(...)` id filter Home sends to PostgREST — the carousels only
-// render 6 items each, so a heavy saver must not bloat the request. TODO: once
-// the save ledger ships, a server-side top-N query can replace the cap.
+// render 6 items each, so a heavy saver must not bloat the request.
 const SAVED_IDS_CAP = 30;
 
 type HomeData = {
@@ -66,32 +68,44 @@ type HomeData = {
   // Saved-id count this deck query reached past — the deck must not be dealt
   // from a page fetched before hydration knew the real count.
   readonly deckSavedCount: number;
-  readonly byId: ReadonlyMap<string, EventListItem>;
+  readonly byId: EventMap;
   readonly organizers: readonly FeaturedOrganizer[];
   readonly config: HomeConfig;
 };
 
 const TRENDING_LIMIT = 6;
 
+// Stable placeholder while the page is pending, so `byId` keeps its identity
+// across renders and downstream effects don't fire on every paint.
+const EMPTY_HOME: HomeData = {
+  events: [],
+  trending: [],
+  deck: [],
+  deckSavedCount: -1,
+  byId: new Map(),
+  organizers: [],
+  config: HOME_CONFIG_DEFAULTS,
+};
+const NO_IDS: readonly string[] = [];
+
 const loadHome = async (
   client: Parameters<typeof listUpcomingEvents>[0],
-  extraIds: readonly string[],
   // The deck reducer drops saved ids client-side, so the query has to reach
   // past them or a returning user gets a short deck.
   savedCount: number,
 ): Promise<HomeData> => {
-  const [events, ranked, deck, extra, organizers, config] = await Promise.all([
+  const [events, ranked, deck, organizers, config] = await Promise.all([
     listUpcomingEvents(client, { limit: 12 }),
     listTrendingEvents(client, { limit: TRENDING_LIMIT }),
     listDeckEvents(client, { limit: DECK_CAP, excludeCount: savedCount }),
-    extraIds.length > 0 ? listEventsByIds(client, extraIds) : Promise.resolve([]),
     listFeaturedOrganizers(client, { limit: 9 }),
     getHomeConfig(client),
   ]);
-  const byId = new Map<string, EventListItem>();
-  for (const event of [...events, ...extra]) {
-    byId.set(event.id, event);
-  }
+  // Every row the page already holds — a deck swipe-right or a Trending heart
+  // then resolves in the Favorites row without a fetch.
+  const byId = new Map(
+    [...events, ...ranked, ...deck].map((event) => [event.id, event] as const),
+  );
   // Save-ranked events lead; soonest upcoming fill the remaining slots so the
   // rail stays populated before any saves accumulate.
   const seen = new Set(ranked.map((event) => event.id));
@@ -113,7 +127,7 @@ const loadHome = async (
 export default function HomeScreen() {
   const router = useRouter();
   const client = useDbClient();
-  const { savedIds } = useSavedEvents();
+  const { savedIds, hydrated } = useSavedEvents();
   const [recentIds, setRecentIds] = useState<readonly string[]>([]);
   const [headerSearch, setHeaderSearch] = useState(false);
 
@@ -137,61 +151,71 @@ export default function HomeScreen() {
     () => [...savedIds].sort().slice(0, SAVED_IDS_CAP),
     [savedIds],
   );
-  // Stable string deps so the loader identity only changes when ids change.
-  const savedKey = savedList.join(",");
-  // savedList is capped, so its key can stay equal while the real count moves
-  // — and that count drives how far the deck query reaches past saved ids.
+  // The base page is fetched once per session (and again on pull-to-refresh),
+  // never per save: the loader's identity only follows `hydrated`. The deck
+  // query still needs the live saved count to reach past the ids the reducer
+  // drops, so the loader reads it through a ref at call time. This effect is
+  // declared before `useQuery` so it lands first in the hydration commit.
   const savedCount = savedIds.size;
-  const recentKey = recentIds.join(",");
+  const savedCountRef = useRef(savedCount);
+  useEffect(() => {
+    savedCountRef.current = savedCount;
+  }, [savedCount]);
   const loader = useCallback(
     (c: Parameters<typeof listUpcomingEvents>[0]) =>
-      loadHome(c, [...new Set([...savedList, ...recentIds])], savedCount),
+      loadHome(c, savedCountRef.current),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [savedKey, recentKey, savedCount],
+    [hydrated],
   );
-  const { state } = useQuery(client, loader);
+  // Gated on hydration so cold start makes one saved-aware request instead of
+  // a pre- and post-hydration pair.
+  const { state, refresh, refreshing } = useQuery(client, loader, {
+    enabled: hydrated,
+  });
 
-  const data: HomeData =
-    state.status === "ready"
-      ? state.data
-      : {
-          events: [],
-          trending: [],
-          deck: [],
-          deckSavedCount: -1,
-          byId: new Map(),
-          organizers: [],
-          config: HOME_CONFIG_DEFAULTS,
-        };
+  const data: HomeData = state.status === "ready" ? state.data : EMPTY_HOME;
 
-  // Every save re-runs loadHome (savedKey dep) and the carousels flash their
-  // loading state — the deck must not: keep the last ready list so a right
-  // swipe doesn't blank and reset the stack mid-session.
-  const [deckEvents, setDeckEvents] = useState<readonly EventListItem[]>([]);
-  const [deckSavedCount, setDeckSavedCount] = useState(-1);
-  useEffect(() => {
-    if (state.status === "ready") {
-      setDeckEvents(state.data.deck);
-      setDeckSavedCount(state.data.deckSavedCount);
-    } else if (state.status === "error") {
-      // A failed saved-aware refetch must not leave a reconciled deck inert
-      // forever: settle it with the rows already in hand so it is swipeable
-      // again. The carousels surface the error; the deck just stops waiting.
-      setDeckSavedCount(savedCount);
-    }
-  }, [savedCount, state]);
+  // Favorites and Recently Viewed derive from ids Home may not have rows for;
+  // the id-cache fetches only those gaps, once the base page is in, and never
+  // puts a section into the loading state.
+  const wantedIds = useMemo(
+    () => [...new Set([...savedList, ...recentIds])],
+    [savedList, recentIds],
+  );
+  const merged = useEventsByIds(
+    client,
+    state.status === "ready" ? wantedIds : NO_IDS,
+    data.byId,
+  );
 
-  // Soonest-first — savedList is id-sorted for stable query deps, which is
+  // The deck is dealt from its own page: seeded by the base page, refetched
+  // alone whenever the saved count moves (useDeckPage). A pull-to-refresh
+  // therefore never swaps cards under a thumb, and a save made outside the
+  // deck refills it instead of shrinking it.
+  const basePage = useMemo(
+    () =>
+      state.status === "ready"
+        ? { events: state.data.deck, savedCount: state.data.deckSavedCount }
+        : null,
+    [state],
+  );
+  const deckPage = useDeckPage(
+    client,
+    basePage,
+    state.status === "error",
+    savedCount,
+  );
+
+  // Soonest-first — savedList is id-sorted for a stable memo, which is
   // meaningless for display.
-  const favoriteEvents = savedList
-    .map((id) => data.byId.get(id))
-    .filter((event): event is EventListItem => Boolean(event))
-    .sort((a, b) => (a.startAt < b.startAt ? -1 : a.startAt > b.startAt ? 1 : 0))
-    .slice(0, FAVORITES_LIMIT);
-  const recentEvents = recentIds
-    .map((id) => data.byId.get(id))
-    .filter((event): event is EventListItem => Boolean(event))
-    .slice(0, RECENT_LIMIT);
+  const favoriteEvents = pickEvents(savedList, merged, {
+    order: "soonest",
+    limit: FAVORITES_LIMIT,
+  });
+  const recentEvents = pickEvents(recentIds, merged, {
+    order: "given",
+    limit: RECENT_LIMIT,
+  });
   // Trending = most-saved upcoming events, ranked server-side in loadHome.
   const trendingEvents = data.trending;
 
@@ -289,6 +313,13 @@ export default function HomeScreen() {
         contentContainerStyle={styles.content}
         onLayout={onViewportLayout}
         onScroll={handleScroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={color.gulchGreen}
+          />
+        }
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
@@ -297,12 +328,13 @@ export default function HomeScreen() {
         {/* The deck leads (device pass: it took the banner ad's slot); it
             renders nothing until dealt, so Trending simply moves up. */}
         <HomeDeckSection
-          events={deckEvents}
+          events={deckPage.events}
           savedIds={savedIds}
-          // Only a page fetched with today's saved count may be dealt: the
-          // first request can land before hydration, carrying rows that stop
-          // short of the ids the deck will drop.
-          savedCountMatches={deckSavedCount === savedCount}
+          // Only a page fetched with today's saved count may be dealt. While
+          // a replacement page is in flight an untouched deck is reconciled
+          // but inert (useHomeDeck); a touched one stays frozen and
+          // interactive.
+          savedCountMatches={deckPage.savedCount === savedCount}
           visible={deckInView}
           onLayout={onDeckLayout}
         />
