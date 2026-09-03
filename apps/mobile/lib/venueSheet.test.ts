@@ -4,7 +4,7 @@ import {
   SHEET_PEEK,
   venueCardWidth,
   venueSheetA11yLabel,
-  venueSheetTitle,
+  venueSheetCounter,
 } from "./venueSheet";
 
 describe("venueCardWidth", () => {
@@ -22,25 +22,29 @@ describe("venueCardWidth", () => {
   });
 });
 
-describe("venueSheetTitle", () => {
-  it("returns just the venue name for a single event", () => {
-    expect(venueSheetTitle("The Earl", 0, 1)).toBe("The Earl");
+describe("venueSheetCounter", () => {
+  it("is absent for a single event", () => {
+    expect(venueSheetCounter(0, 1)).toBeNull();
+    expect(venueSheetCounter(0, 0)).toBeNull();
   });
 
-  it("appends a 1-based position for multi-event venues", () => {
-    expect(venueSheetTitle("The Earl", 0, 3)).toBe("The Earl · 1 of 3");
-    expect(venueSheetTitle("The Earl", 2, 3)).toBe("The Earl · 3 of 3");
+  it("is a 1-based position for multi-event venues", () => {
+    expect(venueSheetCounter(0, 3)).toBe("1 of 3");
+    expect(venueSheetCounter(2, 3)).toBe("3 of 3");
   });
 });
 
 describe("venueSheetA11yLabel", () => {
   it("announces a single event without a swipe hint", () => {
-    expect(venueSheetA11yLabel("The Earl", 1)).toBe("1 event at The Earl");
+    expect(venueSheetA11yLabel("The Earl", 0, 1)).toBe("1 event at The Earl");
   });
 
-  it("announces the count and the swipe hint for several events", () => {
-    expect(venueSheetA11yLabel("The Earl", 4)).toBe(
-      "4 events at The Earl, swipe to see more",
+  it("announces the count, the position and the swipe hint for several events", () => {
+    expect(venueSheetA11yLabel("The Earl", 0, 4)).toBe(
+      "4 events at The Earl, showing 1 of 4, swipe to see more",
+    );
+    expect(venueSheetA11yLabel("The Earl", 3, 4)).toBe(
+      "4 events at The Earl, showing 4 of 4, swipe to see more",
     );
   });
 });

@@ -13,14 +13,17 @@ export const venueCardWidth = (
 ): number =>
   count > 1 ? windowWidth - gutter * 2 - SHEET_PEEK : windowWidth - gutter * 2;
 
-// "Venue · 2 of 5" while scrolling a multi-event venue; just the name otherwise.
-export const venueSheetTitle = (
+// "2 of 5" while scrolling a multi-event venue; nothing for a single event.
+// Rendered beside the name, not inside it, so a long name that truncates can
+// never swallow the position.
+export const venueSheetCounter = (index: number, count: number): string | null =>
+  count > 1 ? `${index + 1} of ${count}` : null;
+
+export const venueSheetA11yLabel = (
   name: string,
   index: number,
   count: number,
-): string => (count > 1 ? `${name} · ${index + 1} of ${count}` : name);
-
-export const venueSheetA11yLabel = (name: string, count: number): string =>
+): string =>
   count > 1
-    ? `${count} events at ${name}, swipe to see more`
+    ? `${count} events at ${name}, showing ${index + 1} of ${count}, swipe to see more`
     : `1 event at ${name}`;

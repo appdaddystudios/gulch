@@ -27,7 +27,7 @@ import {
   SHEET_PEEK,
   venueCardWidth,
   venueSheetA11yLabel,
-  venueSheetTitle,
+  venueSheetCounter,
 } from "../lib/venueSheet";
 import { color, radius, space, type as typePreset } from "../theme";
 
@@ -256,6 +256,7 @@ function VenueCards({
   // peeks in from the right — the cue that the row scrolls.
   const cardWidth = venueCardWidth(width, space.md, count);
   const [index, setIndex] = useState(0);
+  const counter = venueSheetCounter(index, count);
   // FlatList requires this callback's identity to stay fixed for the list's
   // lifetime, hence the ref rather than an inline function.
   const onViewableItemsChanged = useRef(
@@ -269,14 +270,27 @@ function VenueCards({
 
   return (
     <View style={styles.venueSheet}>
-      <Text
-        accessibilityLabel={venueSheetA11yLabel(venue.name, count)}
-        accessibilityRole="header"
-        style={styles.venueName}
-        numberOfLines={1}
-      >
-        {venueSheetTitle(venue.name, index, count)}
-      </Text>
+      {/* Name may truncate; the counter sits beside it and never shrinks, so
+          a long venue name or large text can't hide the position. */}
+      <View style={styles.venueTitleRow}>
+        <Text
+          accessibilityLabel={venueSheetA11yLabel(venue.name, index, count)}
+          accessibilityRole="header"
+          style={styles.venueName}
+          numberOfLines={1}
+        >
+          {venue.name}
+        </Text>
+        {counter ? (
+          <Text
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={styles.venueCounter}
+          >
+            {counter}
+          </Text>
+        ) : null}
+      </View>
       <FlatList
         horizontal
         data={venue.events}
@@ -363,10 +377,21 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
   },
+  venueTitleRow: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    gap: space.sm,
+    paddingHorizontal: space.xl,
+  },
   venueName: {
     ...typePreset.bodyBold14,
     color: color.white,
-    paddingHorizontal: space.xl,
+    flexShrink: 1,
+  },
+  venueCounter: {
+    ...typePreset.caption12,
+    color: color.khakis,
+    flexShrink: 0,
   },
   venueCardsRow: {
     gap: space.md,
