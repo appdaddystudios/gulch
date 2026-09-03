@@ -120,12 +120,13 @@ describe("openInMaps on iOS", () => {
     );
   });
 
-  it("never throws when opening fails", async () => {
+  it("never throws when opening fails, and records no link", async () => {
     pickSheetOption(0);
     openURL.mockRejectedValue(new Error("nope"));
 
     await expect(openInMaps(target)).resolves.toBeUndefined();
     expect(captureException).toHaveBeenCalledTimes(1);
+    expect(captureEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -141,13 +142,15 @@ describe("openInMaps on Android", () => {
     expect(openURL).toHaveBeenCalledWith(
       "geo:33.7489,-84.3879?q=33.7489,-84.3879(El%20S%C3%B3tano)",
     );
+    // Whatever handles geo: is the user's default, not necessarily Google.
+    expect(captureEvent).toHaveBeenCalledTimes(1);
     expect(captureEvent).toHaveBeenCalledWith(
       "link_opened",
-      expect.objectContaining({ domain: "geo", provider: "google" }),
+      expect.objectContaining({ domain: "geo", provider: "system" }),
     );
   });
 
-  it("falls back to the web link when no app handles geo:", async () => {
+  it("falls back to the web link when no app handles geo:, counting the tap once", async () => {
     openURL
       .mockRejectedValueOnce(new Error("no handler"))
       .mockResolvedValueOnce(true);
@@ -158,12 +161,18 @@ describe("openInMaps on Android", () => {
       "https://www.google.com/maps/search/?api=1&query=33.7489,-84.3879",
     );
     expect(captureException).toHaveBeenCalledTimes(1);
+    expect(captureEvent).toHaveBeenCalledTimes(1);
+    expect(captureEvent).toHaveBeenCalledWith(
+      "link_opened",
+      expect.objectContaining({ domain: "www.google.com", provider: "google" }),
+    );
   });
 
-  it("never throws when both attempts fail", async () => {
+  it("never throws when both attempts fail, and records no link", async () => {
     openURL.mockRejectedValue(new Error("no handler"));
 
     await expect(openInMaps(target)).resolves.toBeUndefined();
     expect(captureException).toHaveBeenCalledTimes(2);
+    expect(captureEvent).not.toHaveBeenCalled();
   });
 });

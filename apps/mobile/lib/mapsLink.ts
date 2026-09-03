@@ -1,7 +1,8 @@
 // URL builders for "open this venue in a maps app". Pure — no React Native —
 // so every branch is unit-tested; lib/openInMaps.ts does the platform work.
 
-export type MapsProvider = "apple" | "google";
+// "system" = Android's default geo: handler, whichever app that is.
+export type MapsProvider = "apple" | "google" | "system";
 
 export type MapsTarget = {
   readonly name: string;

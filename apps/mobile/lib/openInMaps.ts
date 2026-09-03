@@ -26,13 +26,16 @@ const domainOf = (url: string): string => {
   }
 };
 
+// Reported only after the launch succeeds, so an attempt that falls through
+// to a fallback (Android geo: with no handler) counts the tap once, for the
+// app that actually opened.
 const open = async (url: string, provider: MapsProvider): Promise<void> => {
+  await Linking.openURL(url);
   captureEvent("link_opened", {
     domain: domainOf(url),
     context: "event_location",
     provider,
   });
-  await Linking.openURL(url);
 };
 
 // The comgooglemaps scheme is not declared in LSApplicationQueriesSchemes, so
@@ -45,9 +48,11 @@ const openGoogle = async (target: MapsTarget): Promise<void> => {
   await open(canOpenApp ? appUrl : googleMapsWebUrl(target), "google");
 };
 
+// The geo: intent goes to whatever the user made default — not necessarily
+// Google — so it is attributed to "system"; only the web fallback is Google's.
 const openAndroid = async (target: MapsTarget): Promise<void> => {
   try {
-    await open(geoIntentUrl(target), "google");
+    await open(geoIntentUrl(target), "system");
   } catch (error) {
     captureException(error);
     await open(googleMapsWebUrl(target), "google");

@@ -24,7 +24,7 @@
 |---|---|---|
 | `event_viewed` | `event_id`, `event_name`, `source` (`home` \| `calendar` \| `map` \| `favorites` \| `null` for deep links; `lineup` in pre-V3 data) | `app/event/[id].tsx` once per successful load |
 | `event_saved` / `event_unsaved` | `event_id` | `hooks/useSavedEvents.tsx` toggle |
-| `link_opened` | `domain` (hostname only; the URL scheme — `maps`, `comgooglemaps`, `geo` — for maps-app links), `context` (`organizer_instagram` \| `research_banner` \| `event_share` \| `event_more_information` \| `banner_ad` \| `event_location` \| `null`), `provider` (`apple` \| `google`, only with `event_location`) | `lib/openLink.ts` — every external link; `lib/openInMaps.ts` for the Event Details venue tap |
+| `link_opened` | `domain` (hostname only; the URL scheme — `maps`, `comgooglemaps`, `geo` — for maps-app links), `context` (`organizer_instagram` \| `research_banner` \| `event_share` \| `event_more_information` \| `banner_ad` \| `event_location` \| `null`), `provider` (`apple` \| `google` \| `system` — Android's default `geo:` handler — only with `event_location`; emitted only after the launch succeeds, so a fallback counts once) | `lib/openLink.ts` — every external link; `lib/openInMaps.ts` for the Event Details venue tap |
 | `search_performed` | `query_length`, `result_count` (never the query text) | Calendar search, debounced 1s |
 | `map_opened` | — | Map tab mount |
 | `map_pin_tapped` | `venue_id`, `venue_name`, `event_count` | Venue pin select (not deselect) |
