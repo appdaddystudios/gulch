@@ -34,6 +34,7 @@
 | `video_played` | `event_id` | Event details "Watch video" tap (Instagram embed player) |
 | `banner_ad_tapped` | `kind` (`image` \| `text`) | Home banner-ad slot tap (link domain arrives via `link_opened`) |
 | `favorites_see_more_tapped` | — | Home "See More Favorites" card at the end of the Your Favorites carousel (shown whenever ≥1 favorite) |
+| `deck_hint_shown` | — | Home deck first-run nudge animated (once per install; not emitted when Reduce Motion suppresses the motion) |
 
 ## Conventions
 

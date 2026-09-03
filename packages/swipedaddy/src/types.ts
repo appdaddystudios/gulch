@@ -22,6 +22,11 @@ export type SwipeDeckConfig = {
    * and vertical scrolls through; omit for the demo's immediate grab.
    */
   activationOffsetX?: number;
+  /**
+   * How far (× window width) `hint()` nudges the active card each way. Keep
+   * it below `swipeThresholdRatio` so the nudge never reads as a commit.
+   */
+  hintDistanceRatio: number;
 };
 
 export type SwipeDeckRef = {
@@ -29,6 +34,14 @@ export type SwipeDeckRef = {
   swipeRight: () => void;
   /** Restores the full deck with a staggered animation. */
   reset: () => void;
+  /**
+   * Nudges the active card right, back, left, back — a "you can swipe this"
+   * demo. Fires no callbacks and leaves `activeIndex` untouched; a gesture
+   * that starts mid-nudge takes over. Returns false — and does nothing — when
+   * the active card is already under a finger or has left the deck, so a
+   * consumer can tell whether the nudge was actually shown.
+   */
+  hint: () => boolean;
   /**
    * UI-thread observable position — read it from worklets/animated styles to
    * animate other UI in sync with swipes. For plain React state, use
