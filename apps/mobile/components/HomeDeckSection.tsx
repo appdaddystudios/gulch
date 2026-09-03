@@ -7,6 +7,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  AppState,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -83,10 +84,11 @@ export function HomeDeckSection({
   // left, exactly once per install. The flag is written the moment the nudge
   // starts so an interrupted animation can't replay it forever; Reduce Motion
   // still writes the flag, just without the motion. `hintable` drops to false
-  // when the deck empties, goes inert, or Home leaves the screen (Tabs keep
-  // Home mounted, so a route change alone would not clean this up) — any of
-  // those cancels a pending hint; a nudge nobody could see must neither
-  // consume the flag nor count as shown.
+  // when the deck empties, goes inert, Home leaves the screen (Tabs keep Home
+  // mounted, so a route change alone would not clean this up) or the app is
+  // backgrounded (the route stays focused) — any of those cancels a pending
+  // hint; a nudge nobody could see must neither consume the flag nor count
+  // as shown.
   const [focused, setFocused] = useState(false);
   useFocusEffect(
     useCallback(() => {
@@ -94,7 +96,16 @@ export function HomeDeckSection({
       return () => setFocused(false);
     }, []),
   );
-  const hintable = isDeckHintable({ ...deck, focused });
+  const [foreground, setForeground] = useState(
+    () => AppState.currentState === "active",
+  );
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next) => {
+      setForeground(next === "active");
+    });
+    return () => subscription.remove();
+  }, []);
+  const hintable = isDeckHintable({ ...deck, focused, foreground });
   useEffect(() => {
     if (!hintable) {
       return;
