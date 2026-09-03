@@ -1,13 +1,12 @@
 import { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { Header } from "../../components/Header";
 import { VenueMap } from "../../components/VenueMap";
 import { captureEvent } from "../../lib/telemetry";
 import { color } from "../../theme";
 
-// The map itself lives in components/VenueMap so Home can embed the same
-// functionality inside its Hotspots card.
+// Full-bleed: no GULCH header, the map runs under the status bar (device
+// pass). VenueMap pads its own non-map overlays for the top inset.
 export default function MapScreen() {
   useEffect(() => {
     captureEvent("map_opened");
@@ -15,7 +14,6 @@ export default function MapScreen() {
 
   return (
     <View style={styles.screen}>
-      <Header />
       <VenueMap />
     </View>
   );

@@ -36,6 +36,7 @@
 | `favorites_see_more_tapped` | — | Home "See More Favorites" card at the end of the Your Favorites carousel (shown whenever ≥1 favorite) |
 | `calendar_export_tapped` | — | Event Details "Add to Calendar" button |
 | `calendar_export_result` | `result` (`added` \| `cancelled` \| `unknown` \| `error`; Android always reports `unknown` because the OS sheet doesn't say whether the user saved) | After the system New Event sheet closes |
+| `deck_hint_shown` | — | Home deck first-run nudge animated (once per install; not emitted when Reduce Motion suppresses the motion) |
 
 ## Conventions
 

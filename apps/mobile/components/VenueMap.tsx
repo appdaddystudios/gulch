@@ -1,7 +1,7 @@
 import Mapbox from "@rnmapbox/maps";
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -11,6 +11,8 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import type { ViewToken } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "./Button";
 import { EmptyState } from "./EmptyState";
@@ -21,6 +23,12 @@ import { useDbClient, useQuery, type QueryState } from "../hooks/useQuery";
 import { useSaveToast } from "../hooks/useSaveToast";
 import { listMapVenues, type MapVenue } from "../lib/mapEvents";
 import { captureEvent } from "../lib/telemetry";
+import {
+  SHEET_PEEK,
+  venueCardWidth,
+  venueSheetA11yLabel,
+  venueSheetCounter,
+} from "../lib/venueSheet";
 import { color, radius, space, type as typePreset } from "../theme";
 
 // Expo inlines only static dot-notation env reads.
@@ -34,8 +42,12 @@ if (MAPBOX_TOKEN) {
 const ATLANTA_CENTER: readonly [number, number] = [-84.388, 33.758];
 const DEFAULT_ZOOM = 11;
 const PIN_SIZE = 36;
+// A card counts as "current" once this much of it is on screen.
+const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 60 };
 
 // The live venue map behind the Map tab (pins, venue sheet, save + open).
+// Renders full-bleed: the map runs under the status bar, so only the non-map
+// overlays (loading/error/empty states) pad for the top inset.
 export function VenueMap() {
   const client = useDbClient();
   const loader = useCallback(
@@ -55,13 +67,14 @@ function Content({
   readonly onRetry: () => void;
 }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { isSaved, toggle, toastVisible, toastNonce, dismissToast } =
     useSaveToast();
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
 
   if (!MAPBOX_TOKEN) {
     return (
-      <Centered>
+      <Centered topInset={insets.top}>
         <EmptyState
           icon={<MapIcon size={48} color={color.gulchGreen} />}
           title="Map unavailable"
@@ -73,7 +86,7 @@ function Content({
 
   if (state.status === "loading") {
     return (
-      <Centered>
+      <Centered topInset={insets.top}>
         <ActivityIndicator color={color.gulchGreen} size="large" />
       </Centered>
     );
@@ -81,7 +94,7 @@ function Content({
 
   if (state.status === "missing-client") {
     return (
-      <Centered>
+      <Centered topInset={insets.top}>
         <EmptyState
           title="Not connected"
           subtitle="Supabase environment variables are not configured."
@@ -92,7 +105,7 @@ function Content({
 
   if (state.status === "error") {
     return (
-      <Centered>
+      <Centered topInset={insets.top}>
         <EmptyState
           icon={<MapIcon size={48} color={color.gulchGreen} />}
           title="Couldn't load the map"
@@ -155,7 +168,10 @@ function Content({
       </Mapbox.MapView>
 
       {venues.length === 0 ? (
-        <View style={styles.emptyOverlay} pointerEvents="none">
+        <View
+          style={[styles.emptyOverlay, { paddingTop: insets.top }]}
+          pointerEvents="none"
+        >
           <EmptyState
             icon={<MapIcon size={48} color={color.gulchGreen} />}
             title="Nothing to map yet"
@@ -165,7 +181,10 @@ function Content({
       ) : null}
 
       {selectedVenue ? (
+        // Keyed by venue so the sheet's scroll position and counter restart
+        // when a different pin is chosen.
         <VenueCards
+          key={selectedVenue.id}
           venue={selectedVenue}
           isSaved={isSaved}
           onToggleSave={toggle}
@@ -173,18 +192,33 @@ function Content({
         />
       ) : null}
 
-      <Toast
-        key={toastNonce}
-        message="Added to your favorites"
-        visible={toastVisible}
-        onDismiss={dismissToast}
-      />
+      {/* The map runs under the status bar, so the toast's own top offset is
+          measured from below the safe area rather than the physical edge. */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.toastInset, { top: insets.top }]}
+      >
+        <Toast
+          key={toastNonce}
+          message="Added to your favorites"
+          visible={toastVisible}
+          onDismiss={dismissToast}
+        />
+      </View>
     </View>
   );
 }
 
-function Centered({ children }: { readonly children: ReactNode }) {
-  return <View style={styles.centered}>{children}</View>;
+function Centered({
+  children,
+  topInset,
+}: {
+  readonly children: ReactNode;
+  readonly topInset: number;
+}) {
+  return (
+    <View style={[styles.centered, { paddingTop: topInset }]}>{children}</View>
+  );
 }
 
 function VenuePin({
@@ -223,21 +257,62 @@ function VenueCards({
   readonly onOpenEvent: (id: string) => void;
 }) {
   const { width } = useWindowDimensions();
-  const cardWidth = width - space.md * 2;
+  const count = venue.events.length;
+  const hasMore = count > 1;
+  // Narrower than the window when there are several events so the next card
+  // peeks in from the right — the cue that the row scrolls.
+  const cardWidth = venueCardWidth(width, space.md, count);
+  const [index, setIndex] = useState(0);
+  const counter = venueSheetCounter(index, count);
+  // FlatList requires this callback's identity to stay fixed for the list's
+  // lifetime, hence the ref rather than an inline function.
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { readonly viewableItems: readonly ViewToken[] }) => {
+      const first = viewableItems[0]?.index;
+      if (typeof first === "number") {
+        setIndex(first);
+      }
+    },
+  ).current;
 
   return (
     <View style={styles.venueSheet}>
-      <Text style={styles.venueName} numberOfLines={1}>
-        {venue.name}
-      </Text>
+      {/* Name may truncate; the counter sits beside it and never shrinks, so
+          a long venue name or large text can't hide the position. */}
+      <View style={styles.venueTitleRow}>
+        <Text
+          accessibilityLabel={venueSheetA11yLabel(venue.name, index, count)}
+          accessibilityRole="header"
+          style={styles.venueName}
+          numberOfLines={1}
+        >
+          {venue.name}
+        </Text>
+        {counter ? (
+          <Text
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={styles.venueCounter}
+          >
+            {counter}
+          </Text>
+        ) : null}
+      </View>
       <FlatList
         horizontal
         data={venue.events}
         keyExtractor={(event) => event.id}
         showsHorizontalScrollIndicator={false}
         snapToInterval={cardWidth + space.md}
+        snapToAlignment="start"
         decelerationRate="fast"
-        contentContainerStyle={styles.venueCardsRow}
+        contentContainerStyle={[
+          styles.venueCardsRow,
+          // Trailing room so the last card can still snap to the start edge.
+          hasMore ? { paddingRight: SHEET_PEEK } : null,
+        ]}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={VIEWABILITY_CONFIG}
         renderItem={({ item }) => (
           <View style={[styles.venueCard, { width: cardWidth }]}>
             <EventCard
@@ -309,10 +384,26 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
   },
+  toastInset: {
+    left: 0,
+    position: "absolute",
+    right: 0,
+  },
+  venueTitleRow: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    gap: space.sm,
+    paddingHorizontal: space.xl,
+  },
   venueName: {
     ...typePreset.bodyBold14,
     color: color.white,
-    paddingHorizontal: space.xl,
+    flexShrink: 1,
+  },
+  venueCounter: {
+    ...typePreset.caption12,
+    color: color.khakis,
+    flexShrink: 0,
   },
   venueCardsRow: {
     gap: space.md,

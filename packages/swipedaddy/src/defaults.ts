@@ -8,4 +8,5 @@ export const DEFAULT_CONFIG: SwipeDeckConfig = {
   maxRotationRad: Math.PI / 20,
   swipeThresholdRatio: 1 / 3,
   exitDistanceRatio: 1.5,
+  hintDistanceRatio: 0.18,
 };

@@ -3,9 +3,19 @@ import {
   type SwipeDeckConfig,
   type SwipeDeckRef,
 } from "@fontezbrooks/swipedaddy";
-import { useRef } from "react";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
-import type { AccessibilityActionEvent } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AccessibilityInfo,
+  AppState,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import type {
+  AccessibilityActionEvent,
+  LayoutChangeEvent,
+} from "react-native";
 
 import { DeckCard, deckCardLabel } from "./DeckCard";
 import { EmptyState } from "./EmptyState";
@@ -13,7 +23,14 @@ import { SwipeStamps } from "./SwipeStamps";
 import { Toast } from "./Toast";
 import { useHomeDeck } from "../hooks/useHomeDeck";
 import type { DeckEntry } from "../lib/deck";
+import {
+  hasSeenDeckHint,
+  isDeckHintable,
+  markDeckHintSeen,
+  shouldRunDeckHint,
+} from "../lib/deckHint";
 import type { EventListItem } from "../lib/events";
+import { captureEvent } from "../lib/telemetry";
 import { space } from "../theme";
 
 // Gesture feel carried over from TheSouthernShmooze's tuned deck: commit at
@@ -35,6 +52,8 @@ const STACK_DEPTH = (DECK_CONFIG.visibleCards ?? 1) - 1;
 // Figma: 370 on a 402pt screen → 16pt inset each side. Square card.
 const CARD_INSET = space.xl * 2;
 const STACK_BOTTOM_GAP = space.md;
+// Let the deck settle on screen before the first-run nudge draws the eye.
+const HINT_DELAY_MS = 600;
 
 // `activate` is what a screen-reader double tap fires. The grouped container
 // hides the card's own tap gesture from assistive tech, so without it the
@@ -50,6 +69,10 @@ type HomeDeckSectionProps = {
   readonly savedIds: ReadonlySet<string>;
   /** The fetched page was queried with the current saved-id count. */
   readonly savedCountMatches: boolean;
+  /** The section intersects the parent scroll viewport (hint gating). */
+  readonly visible: boolean;
+  /** Layout of the dealt deck, relative to the parent scroll content. */
+  readonly onLayout: (event: LayoutChangeEvent) => void;
 };
 
 // Home V3.1 swipe deck: right = save, left = back to the bottom, tap = open.
@@ -59,10 +82,76 @@ export function HomeDeckSection({
   events,
   savedIds,
   savedCountMatches,
+  visible,
+  onLayout,
 }: HomeDeckSectionProps) {
   const deckRef = useRef<SwipeDeckRef>(null);
   const { width } = useWindowDimensions();
   const deck = useHomeDeck(events, savedIds, savedCountMatches);
+
+  // First-run swipe hint: once a card can be nudged, nudge it right then
+  // left, exactly once per install. The flag is written the moment the nudge
+  // starts so an interrupted animation can't replay it forever; Reduce Motion
+  // still writes the flag, just without the motion. `hintable` drops to false
+  // when the deck empties, goes inert, Home leaves the screen (Tabs keep Home
+  // mounted, so a route change alone would not clean this up) or the app is
+  // backgrounded (the route stays focused) — any of those cancels a pending
+  // hint; a nudge nobody could see must neither consume the flag nor count
+  // as shown.
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
+  const [foreground, setForeground] = useState(
+    () => AppState.currentState === "active",
+  );
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next) => {
+      setForeground(next === "active");
+    });
+    return () => subscription.remove();
+  }, []);
+  const hintable = isDeckHintable({ ...deck, focused, foreground, visible });
+  useEffect(() => {
+    if (!hintable) {
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const [seen, reduceMotion] = await Promise.all([
+        hasSeenDeckHint(),
+        AccessibilityInfo.isReduceMotionEnabled(),
+      ]);
+      if (cancelled) {
+        return;
+      }
+      const verdict = shouldRunDeckHint({ seen, hintable, reduceMotion });
+      if (verdict === "skip") {
+        return;
+      }
+      if (verdict === "mark-only") {
+        void markDeckHintSeen();
+        return;
+      }
+      // The engine is the last word: no mounted deck, or a card already
+      // under the user's finger, means no hint — and then no flag either.
+      if (!deckRef.current?.hint()) {
+        return;
+      }
+      void markDeckHintSeen();
+      captureEvent("deck_hint_shown");
+    };
+    const timer = setTimeout(() => {
+      void run();
+    }, HINT_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [hintable]);
 
   // Nothing was dealt: either the query came back empty or every fetched
   // event is already saved. Either way the section stays hidden.
@@ -121,6 +210,7 @@ export function HomeDeckSection({
       // Inert while an untouched deck awaits its saved-aware page (see
       // useHomeDeck.interactive); the cards stay visible so nothing flashes.
       pointerEvents={deck.interactive ? "auto" : "none"}
+      onLayout={onLayout}
       style={[styles.deck, { height }]}
     >
       {/* Deck and toast are siblings keyed by separate counters; both start at

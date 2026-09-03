@@ -51,14 +51,19 @@ export function SwipeDeck<T>(
     refs[Math.floor(activeIndex.value)]?.current?.swipeRight();
   }, [activeIndex, refs]);
 
+  const hint = useCallback(() => {
+    return refs[Math.floor(activeIndex.value)]?.current?.hint() ?? false;
+  }, [activeIndex, refs]);
+
   useImperativeHandle(ref, () => {
     return {
       swipeLeft,
       swipeRight,
       reset,
+      hint,
       activeIndex,
     };
-  }, [swipeLeft, swipeRight, reset, activeIndex]);
+  }, [swipeLeft, swipeRight, reset, hint, activeIndex]);
 
   const count = data.length;
   useAnimatedReaction(
