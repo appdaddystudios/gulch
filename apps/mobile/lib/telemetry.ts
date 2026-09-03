@@ -43,7 +43,10 @@ export const initTelemetry = async (
     const posthogModule = await import("posthog-react-native");
     posthog = new posthogModule.PostHog(posthogKey, {
       host: env.posthogHost,
-      captureAppLifecycleEvents: true
+      captureAppLifecycleEvents: true,
+      // No IP-derived location on events: keeps the App Store privacy label
+      // free of "Coarse Location" — the dashboards never use geography.
+      disableGeoip: true
     });
   }
 

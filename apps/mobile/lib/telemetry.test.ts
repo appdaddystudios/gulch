@@ -83,7 +83,8 @@ describe("telemetry", () => {
     });
     expect(posthogConstructor).toHaveBeenCalledWith("ph_test", {
       host: "https://us.i.posthog.com",
-      captureAppLifecycleEvents: true
+      captureAppLifecycleEvents: true,
+      disableGeoip: true
     });
     expect(posthogCapture).toHaveBeenCalledWith("mobile_test", { count: 1, ok: true });
     expect(posthogScreen).toHaveBeenCalledWith("/event/evt-1");
