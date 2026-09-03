@@ -77,6 +77,11 @@ function SwipeableCard({
   // Set in onEnd when this gesture commits a swipe, so onFinalize knows not
   // to spring the card back over its exit animation.
   const committed = useSharedValue(false);
+  // Where the card sat when the finger landed. A drag adds its displacement
+  // to this, so grabbing a card mid-hint() or mid-spring continues from under
+  // the finger instead of snapping to the touch-down origin.
+  const startX = useSharedValue(0);
+  const startY = useSharedValue(0);
   // True once this card has actually left the deck. A nonzero translation is
   // NOT the same thing — a card being dragged, or springing back from a failed
   // or gated swipe, is still very much in play.
@@ -210,12 +215,17 @@ function SwipeableCard({
   const pan = offsetPan
     .onBegin(() => {
       'worklet';
-      // A finger beats any running hint()/reset() motion: onUpdate writes the
-      // translation directly, and a live sequence would fight it frame by
-      // frame and then yank the card back once released.
-      cancelAnimation(translateX);
-      cancelAnimation(translateY);
       currentActiveIndex.value = Math.floor(activeIndex.value);
+      // A finger beats any running hint()/reset() motion on the ACTIVE card:
+      // freeze it where it is and carry that offset into the drag. Only the
+      // active card — a touch that lands on a card still flying out must not
+      // freeze it mid-exit.
+      if (currentActiveIndex.value === index) {
+        cancelAnimation(translateX);
+        cancelAnimation(translateY);
+        startX.value = translateX.value;
+        startY.value = translateY.value;
+      }
       // Clear the previous gesture's verdict. Without this a gesture that
       // never reaches onUpdate (a tap, or a pan that fails the activation
       // offset) would be finalized against a stale commit threshold left by
@@ -226,8 +236,8 @@ function SwipeableCard({
     .onUpdate(event => {
       'worklet';
       if (currentActiveIndex.value !== index) return;
-      translateX.value = event.translationX;
-      translateY.value = event.translationY;
+      translateX.value = startX.value + event.translationX;
+      translateY.value = startY.value + event.translationY;
 
       nextActiveIndex.value = interpolate(
         translateX.value,
@@ -245,11 +255,13 @@ function SwipeableCard({
     // competing native gesture, or was interrupted by the app losing focus —
     // and such a pan keeps its last translation, so deciding there would
     // commit a swipe the user never completed.
-    .onEnd(event => {
+    .onEnd(() => {
       'worklet';
       if (currentActiveIndex.value !== index) return;
 
-      const sign = Math.sign(event.translationX);
+      // The card's side, not the finger's delta: a drag that started from a
+      // hint/spring offset can end on the opposite side of where it moved.
+      const sign = Math.sign(translateX.value);
       if (nextActiveIndex.value !== activeIndex.value + 1 || sign === 0) return;
 
       committed.value = true;
