@@ -3,8 +3,13 @@ import {
   type SwipeDeckConfig,
   type SwipeDeckRef,
 } from "@fontezbrooks/swipedaddy";
-import { useRef } from "react";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { useEffect, useRef } from "react";
+import {
+  AccessibilityInfo,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import type { AccessibilityActionEvent } from "react-native";
 
 import { DeckCard, deckCardLabel } from "./DeckCard";
@@ -13,7 +18,13 @@ import { SwipeStamps } from "./SwipeStamps";
 import { Toast } from "./Toast";
 import { useHomeDeck } from "../hooks/useHomeDeck";
 import type { DeckEntry } from "../lib/deck";
+import {
+  hasSeenDeckHint,
+  markDeckHintSeen,
+  shouldRunDeckHint,
+} from "../lib/deckHint";
 import type { EventListItem } from "../lib/events";
+import { captureEvent } from "../lib/telemetry";
 import { space } from "../theme";
 
 // Gesture feel carried over from TheSouthernShmooze's tuned deck: commit at
@@ -35,6 +46,8 @@ const STACK_DEPTH = (DECK_CONFIG.visibleCards ?? 1) - 1;
 // Figma: 370 on a 402pt screen → 16pt inset each side. Square card.
 const CARD_INSET = space.xl * 2;
 const STACK_BOTTOM_GAP = space.md;
+// Let the deck settle on screen before the first-run nudge draws the eye.
+const HINT_DELAY_MS = 600;
 
 // `activate` is what a screen-reader double tap fires. The grouped container
 // hides the card's own tap gesture from assistive tech, so without it the
@@ -63,6 +76,43 @@ export function HomeDeckSection({
   const deckRef = useRef<SwipeDeckRef>(null);
   const { width } = useWindowDimensions();
   const deck = useHomeDeck(events, savedIds, savedCountMatches);
+
+  // First-run swipe hint: once the deck is dealt and swipeable, nudge the top
+  // card right then left, exactly once per install. The flag is written the
+  // moment the nudge starts so an interrupted animation can't replay it
+  // forever; Reduce Motion still writes the flag, just without the motion.
+  const { dealt, interactive } = deck;
+  useEffect(() => {
+    if (!dealt || !interactive) {
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const [seen, reduceMotion] = await Promise.all([
+        hasSeenDeckHint(),
+        AccessibilityInfo.isReduceMotionEnabled(),
+      ]);
+      if (cancelled) {
+        return;
+      }
+      const verdict = shouldRunDeckHint({ seen, dealt, interactive, reduceMotion });
+      if (verdict === "skip") {
+        return;
+      }
+      void markDeckHintSeen();
+      if (verdict === "run") {
+        deckRef.current?.hint();
+        captureEvent("deck_hint_shown");
+      }
+    };
+    const timer = setTimeout(() => {
+      void run();
+    }, HINT_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [dealt, interactive]);
 
   // Nothing was dealt: either the query came back empty or every fetched
   // event is already saved. Either way the section stays hidden.

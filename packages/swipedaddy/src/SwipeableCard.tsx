@@ -13,6 +13,7 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -43,7 +44,12 @@ export type SwipeableCardRefType = {
   swipeRight: () => void;
   swipeLeft: () => void;
   reset: () => void;
+  hint: () => void;
 };
+
+/** `hint()` timing: out, back, out the other way, then the config spring home. */
+const HINT_OUT_MS = 260;
+const HINT_BACK_MS = 200;
 
 /** Top card's zIndex; decks larger than this would wrap to negative z. */
 const STACK_TOP_Z = 10_000;
@@ -135,6 +141,20 @@ function SwipeableCard({
     }
   }, [activeIndex, exited, index, spring, translateX, translateY]);
 
+  // Demo nudge: right, back, left, back. Only translateX moves, so rotation
+  // and `progress` follow for free. No commit, no callbacks, no index change.
+  const hint = useCallback(() => {
+    if (exited.value) return;
+    const distance = width * config.hintDistanceRatio;
+    cancelAnimation(translateX);
+    translateX.value = withSequence(
+      withTiming(distance, { duration: HINT_OUT_MS }),
+      withTiming(0, { duration: HINT_BACK_MS }),
+      withTiming(-distance, { duration: HINT_OUT_MS }),
+      withSpring(0, spring),
+    );
+  }, [config.hintDistanceRatio, exited, spring, translateX, width]);
+
   const rightIntent = useCallback(() => {
     onSwipeRightIntent?.();
   }, [onSwipeRightIntent]);
@@ -149,8 +169,9 @@ function SwipeableCard({
       swipeLeft,
       swipeRight,
       reset,
+      hint,
     };
-  }, [swipeLeft, swipeRight, reset]);
+  }, [swipeLeft, swipeRight, reset, hint]);
 
   const inputRange = useMemo(() => {
     const threshold = width * config.swipeThresholdRatio;
@@ -189,6 +210,11 @@ function SwipeableCard({
   const pan = offsetPan
     .onBegin(() => {
       'worklet';
+      // A finger beats any running hint()/reset() motion: onUpdate writes the
+      // translation directly, and a live sequence would fight it frame by
+      // frame and then yank the card back once released.
+      cancelAnimation(translateX);
+      cancelAnimation(translateY);
       currentActiveIndex.value = Math.floor(activeIndex.value);
       // Clear the previous gesture's verdict. Without this a gesture that
       // never reaches onUpdate (a tap, or a pan that fails the activation
