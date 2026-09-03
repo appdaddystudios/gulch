@@ -5,9 +5,31 @@ import {
   formatEventCardDate,
   formatEventDateTime,
   formatEventTimeCompact,
+  formatFavoriteCount,
   formatWeekRange,
   weekStartKey,
 } from "./format";
+
+describe("formatFavoriteCount", () => {
+  it("returns null at zero so the date subtitle shows instead", () => {
+    expect(formatFavoriteCount(0)).toBeNull();
+  });
+
+  it("returns null for negative or non-integer counts", () => {
+    expect(formatFavoriteCount(-3)).toBeNull();
+    expect(formatFavoriteCount(1.5)).toBeNull();
+    expect(formatFavoriteCount(Number.NaN)).toBeNull();
+  });
+
+  it("singularizes one favorite", () => {
+    expect(formatFavoriteCount(1)).toBe("1 favorite");
+  });
+
+  it("pluralizes larger counts", () => {
+    expect(formatFavoriteCount(2)).toBe("2 favorites");
+    expect(formatFavoriteCount(120)).toBe("120 favorites");
+  });
+});
 
 describe("formatEventDateTime", () => {
   it("formats a start/end range, dropping on-the-hour minutes", () => {

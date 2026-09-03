@@ -173,6 +173,15 @@ export const formatWeekRange = (weekStartKeyValue: string): string => {
 };
 
 // Card subtitle date for the Home rails, e.g. "Fri, Jul 11".
+// Trending rail subtitle. Null below one so callers fall back to the date;
+// the count is an aggregate of anonymous device favorites.
+export const formatFavoriteCount = (count: number): string | null => {
+  if (!Number.isInteger(count) || count < 1) {
+    return null;
+  }
+  return count === 1 ? "1 favorite" : `${count} favorites`;
+};
+
 export const formatEventCardDate = (
   iso: string,
   timeZone: string = DEFAULT_TIME_ZONE,
