@@ -24,6 +24,7 @@ import { SearchIcon } from "../../components/icons";
 import { SearchBar } from "../../components/SearchBar";
 import { SectionTitle } from "../../components/SectionTitle";
 import { SeeMoreCard } from "../../components/SeeMoreCard";
+import { useDeckPage } from "../../hooks/useDeckPage";
 import { useEventsByIds } from "../../hooks/useEventsByIds";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
@@ -187,22 +188,23 @@ export default function HomeScreen() {
     data.byId,
   );
 
-  // A pull-to-refresh swaps the page silently, but the deck must not swap
-  // under a thumb: keep the last ready list so the stack only rebuilds when
-  // its own hook decides it is safe.
-  const [deckEvents, setDeckEvents] = useState<readonly EventListItem[]>([]);
-  const [deckSavedCount, setDeckSavedCount] = useState(-1);
-  useEffect(() => {
-    if (state.status === "ready") {
-      setDeckEvents(state.data.deck);
-      setDeckSavedCount(state.data.deckSavedCount);
-    } else if (state.status === "error") {
-      // A failed page must not leave the deck waiting forever: settle it with
-      // the rows already in hand so it is swipeable again. The carousels
-      // surface the error; the deck just stops waiting.
-      setDeckSavedCount(savedCount);
-    }
-  }, [savedCount, state]);
+  // The deck is dealt from its own page: seeded by the base page, refetched
+  // alone whenever the saved count moves (useDeckPage). A pull-to-refresh
+  // therefore never swaps cards under a thumb, and a save made outside the
+  // deck refills it instead of shrinking it.
+  const basePage = useMemo(
+    () =>
+      state.status === "ready"
+        ? { events: state.data.deck, savedCount: state.data.deckSavedCount }
+        : null,
+    [state],
+  );
+  const deckPage = useDeckPage(
+    client,
+    basePage,
+    state.status === "error",
+    savedCount,
+  );
 
   // Soonest-first — savedList is id-sorted for a stable memo, which is
   // meaningless for display.
@@ -326,13 +328,13 @@ export default function HomeScreen() {
         {/* The deck leads (device pass: it took the banner ad's slot); it
             renders nothing until dealt, so Trending simply moves up. */}
         <HomeDeckSection
-          events={deckEvents}
+          events={deckPage.events}
           savedIds={savedIds}
-          // Only a saved-aware page may be dealt. The base query is gated on
-          // hydration, so any page that landed (count >= 0) reached past the
-          // ids the deck will drop; later saves refill through the deck's
-          // own hook rather than a refetch.
-          savedCountMatches={deckSavedCount >= 0}
+          // Only a page fetched with today's saved count may be dealt. While
+          // a replacement page is in flight an untouched deck is reconciled
+          // but inert (useHomeDeck); a touched one stays frozen and
+          // interactive.
+          savedCountMatches={deckPage.savedCount === savedCount}
           visible={deckInView}
           onLayout={onDeckLayout}
         />
