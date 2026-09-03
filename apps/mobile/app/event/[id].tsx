@@ -1,4 +1,3 @@
-import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -15,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Badge } from "../../components/Badge";
 import { EmptyState } from "../../components/EmptyState";
 import { Header } from "../../components/Header";
+import { HeroScrim } from "../../components/HeroScrim";
 import { Toast } from "../../components/Toast";
 import { WebView } from "react-native-webview";
 
@@ -220,14 +220,7 @@ function Content({
                   <GulchLogo width={160} height={20} />
                 </View>
               )}
-              <LinearGradient
-                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.1)", "rgba(0,0,0,0.8)"]}
-                locations={[0, 0.7, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                pointerEvents="none"
-                style={StyleSheet.absoluteFill}
-              />
+              <HeroScrim />
               {event.editorsPick ? (
                 <View style={styles.heroBadge}>
                   <Badge label="Editor's Pick" variant="editorsPick" />

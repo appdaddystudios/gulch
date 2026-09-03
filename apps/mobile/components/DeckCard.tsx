@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import { Badge } from "./Badge";
+import { HeroScrim } from "./HeroScrim";
 import type { EventListItem } from "../lib/events";
 import { formatEventTimeCompact } from "../lib/format";
 import { color, hardShadow, radius, space, type as typePreset } from "../theme";
@@ -37,7 +38,8 @@ export const deckCardLabel = (event: EventListItem): string =>
     .join(", ");
 
 // Face of one Home swipe-deck card: square hero image with the title, meta
-// line and time pill laid over the bottom-left (no scrim — per Figma). Fills
+// line and time pill laid over the bottom-left. Figma had no scrim; the
+// device pass added the Details scrim so titles survive bright heroes. Fills
 // the slot the deck engine gives it; the engine owns gestures, so this is a
 // plain View.
 export function DeckCard({ event }: DeckCardProps) {
@@ -57,6 +59,7 @@ export function DeckCard({ event }: DeckCardProps) {
             style={StyleSheet.absoluteFill}
           />
         ) : null}
+        <HeroScrim />
 
         {event.editorsPick ? (
           <View style={styles.badge} pointerEvents="none">
