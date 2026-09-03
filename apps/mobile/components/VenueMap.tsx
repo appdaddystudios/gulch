@@ -192,12 +192,19 @@ function Content({
         />
       ) : null}
 
-      <Toast
-        key={toastNonce}
-        message="Added to your favorites"
-        visible={toastVisible}
-        onDismiss={dismissToast}
-      />
+      {/* The map runs under the status bar, so the toast's own top offset is
+          measured from below the safe area rather than the physical edge. */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.toastInset, { top: insets.top }]}
+      >
+        <Toast
+          key={toastNonce}
+          message="Added to your favorites"
+          visible={toastVisible}
+          onDismiss={dismissToast}
+        />
+      </View>
     </View>
   );
 }
@@ -374,6 +381,11 @@ const styles = StyleSheet.create({
     left: 0,
     paddingBottom: space.xl,
     paddingTop: space.lg,
+    position: "absolute",
+    right: 0,
+  },
+  toastInset: {
+    left: 0,
     position: "absolute",
     right: 0,
   },
