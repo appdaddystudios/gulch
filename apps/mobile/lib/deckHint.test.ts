@@ -16,6 +16,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 import {
   DECK_HINT_KEY,
   hasSeenDeckHint,
+  isDeckHintable,
   markDeckHintSeen,
   shouldRunDeckHint,
   type DeckHintInput,
@@ -31,15 +32,35 @@ beforeEach(() => {
   });
 });
 
+describe("isDeckHintable", () => {
+  const live = { dealt: true, interactive: true, remaining: 3 };
+
+  it("is true for a dealt, interactive deck with cards left", () => {
+    expect(isDeckHintable(live)).toBe(true);
+    expect(isDeckHintable({ ...live, remaining: 1 })).toBe(true);
+  });
+
+  it("is false while nothing is dealt", () => {
+    expect(isDeckHintable({ ...live, dealt: false })).toBe(false);
+  });
+
+  it("is false while the deck is inert", () => {
+    expect(isDeckHintable({ ...live, interactive: false })).toBe(false);
+  });
+
+  it("is false once every card has left the deck", () => {
+    expect(isDeckHintable({ ...live, remaining: 0 })).toBe(false);
+  });
+});
+
 describe("shouldRunDeckHint", () => {
   const base: DeckHintInput = {
     seen: false,
-    dealt: true,
-    interactive: true,
+    hintable: true,
     reduceMotion: false,
   };
 
-  it("runs on a fresh, dealt, interactive deck", () => {
+  it("runs on a fresh, hintable deck", () => {
     expect(shouldRunDeckHint(base)).toBe("run");
   });
 
@@ -54,28 +75,10 @@ describe("shouldRunDeckHint", () => {
     );
   });
 
-  it("skips while nothing is dealt", () => {
-    expect(shouldRunDeckHint({ ...base, dealt: false })).toBe("skip");
-    expect(shouldRunDeckHint({ ...base, dealt: false, reduceMotion: true })).toBe(
-      "skip",
-    );
-  });
-
-  it("skips while the deck is inert", () => {
-    expect(shouldRunDeckHint({ ...base, interactive: false })).toBe("skip");
+  it("skips — and does not mark — when no card can be nudged", () => {
+    expect(shouldRunDeckHint({ ...base, hintable: false })).toBe("skip");
     expect(
-      shouldRunDeckHint({ ...base, interactive: false, reduceMotion: true }),
-    ).toBe("skip");
-  });
-
-  it("never runs when nothing is dealt even if unseen and motion allowed", () => {
-    expect(
-      shouldRunDeckHint({
-        seen: false,
-        dealt: false,
-        interactive: false,
-        reduceMotion: false,
-      }),
+      shouldRunDeckHint({ ...base, hintable: false, reduceMotion: true }),
     ).toBe("skip");
   });
 });

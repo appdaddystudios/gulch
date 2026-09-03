@@ -20,6 +20,7 @@ import { useHomeDeck } from "../hooks/useHomeDeck";
 import type { DeckEntry } from "../lib/deck";
 import {
   hasSeenDeckHint,
+  isDeckHintable,
   markDeckHintSeen,
   shouldRunDeckHint,
 } from "../lib/deckHint";
@@ -77,13 +78,15 @@ export function HomeDeckSection({
   const { width } = useWindowDimensions();
   const deck = useHomeDeck(events, savedIds, savedCountMatches);
 
-  // First-run swipe hint: once the deck is dealt and swipeable, nudge the top
-  // card right then left, exactly once per install. The flag is written the
-  // moment the nudge starts so an interrupted animation can't replay it
-  // forever; Reduce Motion still writes the flag, just without the motion.
-  const { dealt, interactive } = deck;
+  // First-run swipe hint: once a card can be nudged, nudge it right then
+  // left, exactly once per install. The flag is written the moment the nudge
+  // starts so an interrupted animation can't replay it forever; Reduce Motion
+  // still writes the flag, just without the motion. `hintable` drops to false
+  // when the deck empties or goes inert, which cancels a pending hint — a
+  // nudge nobody could see must neither consume the flag nor count as shown.
+  const hintable = isDeckHintable(deck);
   useEffect(() => {
-    if (!dealt || !interactive) {
+    if (!hintable) {
       return;
     }
     let cancelled = false;
@@ -95,13 +98,18 @@ export function HomeDeckSection({
       if (cancelled) {
         return;
       }
-      const verdict = shouldRunDeckHint({ seen, dealt, interactive, reduceMotion });
+      const verdict = shouldRunDeckHint({ seen, hintable, reduceMotion });
       if (verdict === "skip") {
         return;
       }
+      // The engine ref is the last word: no mounted deck, no hint, no flag.
+      const engine = deckRef.current;
+      if (verdict === "run" && !engine) {
+        return;
+      }
       void markDeckHintSeen();
-      if (verdict === "run") {
-        deckRef.current?.hint();
+      if (verdict === "run" && engine) {
+        engine.hint();
         captureEvent("deck_hint_shown");
       }
     };
@@ -112,7 +120,7 @@ export function HomeDeckSection({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [dealt, interactive]);
+  }, [hintable]);
 
   // Nothing was dealt: either the query came back empty or every fetched
   // event is already saved. Either way the section stays hidden.

@@ -25,12 +25,27 @@ export const markDeckHintSeen = async (): Promise<void> => {
   }
 };
 
+export type DeckAvailability = {
+  readonly dealt: boolean;
+  readonly interactive: boolean;
+  readonly remaining: number;
+};
+
+// A card the engine can actually nudge: dealt, swipeable, and still on the
+// table. `remaining` matters on its own — the deck can empty (last card saved)
+// before the hint's delay elapses, and a nudge nobody could see must not
+// consume the one-time flag.
+export const isDeckHintable = ({
+  dealt,
+  interactive,
+  remaining,
+}: DeckAvailability): boolean => dealt && interactive && remaining > 0;
+
 export type DeckHintVerdict = "run" | "mark-only" | "skip";
 
 export type DeckHintInput = {
   readonly seen: boolean;
-  readonly dealt: boolean;
-  readonly interactive: boolean;
+  readonly hintable: boolean;
   readonly reduceMotion: boolean;
 };
 
@@ -38,11 +53,10 @@ export type DeckHintInput = {
 // doesn't fire later if the user turns the setting off.
 export const shouldRunDeckHint = ({
   seen,
-  dealt,
-  interactive,
+  hintable,
   reduceMotion,
 }: DeckHintInput): DeckHintVerdict => {
-  if (!dealt || !interactive || seen) {
+  if (!hintable || seen) {
     return "skip";
   }
   return reduceMotion ? "mark-only" : "run";
