@@ -17,14 +17,16 @@ import type { EventListItem } from "../lib/events";
 import { space } from "../theme";
 
 // Gesture feel carried over from TheSouthernShmooze's tuned deck: commit at
-// 0.28 × width, 2.8° tilt at the threshold, a visible stack of 3.
+// 0.28 × width, 2.8° tilt at the threshold, a visible stack of 3. Each
+// under-card peeks ~20pt below the one above it (offset minus the scale
+// shrink) so the stack reads as a stack at rest.
 const DECK_CONFIG: Partial<SwipeDeckConfig> = {
   activationOffsetX: 12,
   exitDistanceRatio: 1.5,
   maxRotationRad: (10 * Math.PI) / 180 / (1 / 0.28),
   spring: { damping: 20, mass: 0.7, stiffness: 220 },
-  stackOffsetY: 14,
-  stackScaleStep: 0.05,
+  stackOffsetY: 26,
+  stackScaleStep: 0.03,
   swipeThresholdRatio: 0.28,
   visibleCards: 3,
 };
@@ -79,7 +81,7 @@ export function HomeDeckSection({
           subtitle="Find more in Calendar"
         />
         <Toast
-          key={deck.toast.nonce}
+          key={`toast-${deck.toast.nonce}`}
           message="Added to your favorites"
           visible={deck.toast.visible}
           onDismiss={deck.toast.dismiss}
@@ -121,9 +123,12 @@ export function HomeDeckSection({
       pointerEvents={deck.interactive ? "auto" : "none"}
       style={[styles.deck, { height }]}
     >
+      {/* Deck and toast are siblings keyed by separate counters; both start at
+          0 and both hit 1 on the first save, so the keys carry a prefix —
+          a bare collision made React remount the engine mid-save. */}
       <SwipeDeck<DeckEntry>
         ref={deckRef}
-        key={deck.deckKey}
+        key={`deck-${deck.deckKey}`}
         cardStyle={{ width: cardSize, height: cardSize, top: 0 }}
         config={DECK_CONFIG}
         data={deck.entries as DeckEntry[]}
@@ -140,7 +145,7 @@ export function HomeDeckSection({
         )}
       />
       <Toast
-        key={deck.toast.nonce}
+        key={`toast-${deck.toast.nonce}`}
         message="Added to your favorites"
         visible={deck.toast.visible}
         onDismiss={deck.toast.dismiss}
