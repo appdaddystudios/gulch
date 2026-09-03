@@ -19,6 +19,7 @@ import { Toast } from "../../components/Toast";
 import { WebView } from "react-native-webview";
 
 import {
+  CalendarIcon,
   CloseIcon,
   DotsHorizontalIcon,
   GulchLogo,
@@ -29,10 +30,12 @@ import {
   ShareIcon,
   TicketIcon,
 } from "../../components/icons";
+import { useCalendarExport } from "../../hooks/useCalendarExport";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { getEventDetail, type EventDetail } from "../../lib/events";
 import { instagramEmbedUrl } from "../../lib/instagramEmbed";
+import { openInMaps } from "../../lib/openInMaps";
 import { openLink } from "../../lib/openLink";
 import { recordRecentlyViewed } from "../../lib/recentlyViewed";
 import { captureEvent } from "../../lib/telemetry";
@@ -120,6 +123,9 @@ function Content({
   const [heroImageFailed, setHeroImageFailed] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
+  const { exporting, exportToCalendar } = useCalendarExport(
+    state.status === "ready" ? state.data : null,
+  );
 
   if (state.status === "loading") {
     return (
@@ -277,10 +283,25 @@ function Content({
           ) : null}
 
           {event.locationName ? (
-            <View style={styles.location}>
+            <Pressable
+              accessibilityLabel={`Open ${event.locationName} in Maps`}
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() =>
+                void openInMaps({
+                  name: event.locationName as string,
+                  latitude: event.latitude,
+                  longitude: event.longitude,
+                })
+              }
+              style={({ pressed }) => [
+                styles.location,
+                pressed ? styles.saved : null,
+              ]}
+            >
               <MarkerPinIcon size={16} color={color.khakis} />
               <Text style={styles.locationText}>{event.locationName}</Text>
-            </View>
+            </Pressable>
           ) : null}
 
           {event.ticketsRequired ? (
@@ -326,6 +347,20 @@ function Content({
           >
             {isSaved(event.id) ? "Added to Favorites" : "Add to Favorites"}
           </Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Add to Calendar"
+          accessibilityRole="button"
+          accessibilityState={{ busy: exporting, disabled: exporting }}
+          disabled={exporting}
+          onPress={() => void exportToCalendar()}
+          style={({ pressed }) => [
+            styles.saveButton,
+            pressed || exporting ? styles.saved : null,
+          ]}
+        >
+          <CalendarIcon size={18} color={color.oreo} />
+          <Text style={styles.saveLabel}>Add to Calendar</Text>
         </Pressable>
       </View>
 
@@ -486,6 +521,8 @@ const styles = StyleSheet.create({
   },
   stickyButtons: {
     backgroundColor: color.oreo,
+    flexDirection: "row",
+    gap: space.md,
     paddingHorizontal: space.xl,
     paddingTop: space.md,
   },
@@ -505,7 +542,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 2,
-    width: "100%",
+    flex: 1,
   },
   savedButton: {
     alignItems: "center",
@@ -517,7 +554,7 @@ const styles = StyleSheet.create({
     gap: space.sm,
     height: 48,
     justifyContent: "center",
-    width: "100%",
+    flex: 1,
   },
   saved: {
     opacity: 0.7,

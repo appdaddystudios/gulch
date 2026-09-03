@@ -25,13 +25,17 @@ export type EventListItem = {
   readonly externalLink: string | null;
   readonly organizerName: string | null;
   readonly locationName: string | null;
+  // Venue coordinates when geocoded; both null otherwise ("open in maps"
+  // falls back to a name search).
+  readonly latitude: number | null;
+  readonly longitude: number | null;
 };
 
 export type EventDetail = EventListItem;
 
 // PostgREST select used by every events query in the app.
 const EVENT_FIELDS =
-  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, sponsored, is_video, external_link, locations(name), event_organizers(organizers(name))";
+  "webflow_item_id, name, start_at, end_at, custom_time_description, image_url, image_status, tickets_required, editors_pick, sponsored, is_video, external_link, locations(name, latitude, longitude), event_organizers(organizers(name))";
 
 export const EVENT_SELECT = `${EVENT_FIELDS}, event_save_counts(saves)`;
 
@@ -41,6 +45,17 @@ const namedSchema = z.object({ name: z.string() });
 // PostgREST shape; accept either and read the first available name.
 const embeddedNameSchema = z
   .union([namedSchema, z.array(namedSchema)])
+  .nullable()
+  .optional();
+
+const locationSchema = z.object({
+  name: z.string(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+});
+
+const embeddedLocationSchema = z
+  .union([locationSchema, z.array(locationSchema)])
   .nullable()
   .optional();
 
@@ -58,7 +73,7 @@ export const rawEventSchema = z.object({
   sponsored: z.boolean().optional().default(false),
   is_video: z.boolean().optional().default(false),
   external_link: z.string().nullable(),
-  locations: embeddedNameSchema,
+  locations: embeddedLocationSchema,
   // To-one embed; PostgREST may still return an array shape.
   event_save_counts: z
     .union([
@@ -75,6 +90,8 @@ export const rawEventSchema = z.object({
 
 type RawEvent = z.infer<typeof rawEventSchema>;
 type EmbeddedName = z.infer<typeof embeddedNameSchema>;
+type EmbeddedLocation = z.infer<typeof embeddedLocationSchema>;
+type RawLocation = z.infer<typeof locationSchema>;
 
 const firstName = (value: EmbeddedName): string | null => {
   if (!value) {
@@ -82,6 +99,13 @@ const firstName = (value: EmbeddedName): string | null => {
   }
   const record = Array.isArray(value) ? value[0] : value;
   return record?.name ?? null;
+};
+
+const firstLocation = (value: EmbeddedLocation): RawLocation | null => {
+  if (!value) {
+    return null;
+  }
+  return (Array.isArray(value) ? value[0] : value) ?? null;
 };
 
 const organizerName = (rows: RawEvent["event_organizers"]): string | null => {
@@ -102,8 +126,10 @@ const saveCount = (value: RawEvent["event_save_counts"]): number => {
   return record?.saves ?? 0;
 };
 
-export const toEventListItem = (raw: RawEvent): EventListItem => ({
-  id: raw.webflow_item_id,
+export const toEventListItem = (raw: RawEvent): EventListItem => {
+  const location = firstLocation(raw.locations);
+  return {
+    id: raw.webflow_item_id,
   name: raw.name,
   startAt: raw.start_at,
   endAt: raw.end_at,
@@ -116,9 +142,12 @@ export const toEventListItem = (raw: RawEvent): EventListItem => ({
   saveCount: saveCount(raw.event_save_counts),
   isVideo: raw.is_video,
   externalLink: raw.external_link,
-  organizerName: organizerName(raw.event_organizers),
-  locationName: firstName(raw.locations),
-});
+    organizerName: organizerName(raw.event_organizers),
+    locationName: location?.name ?? null,
+    latitude: location?.latitude ?? null,
+    longitude: location?.longitude ?? null,
+  };
+};
 
 type ListUpcomingOptions = {
   readonly limit?: number;

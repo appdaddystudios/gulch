@@ -12,6 +12,12 @@
       "expo-web-browser",
       "@rnmapbox/maps",
       [
+        "expo-calendar",
+        {
+          "calendarPermission": "Gulch adds events you choose to your calendar."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",
