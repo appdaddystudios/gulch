@@ -12,7 +12,7 @@ vi.mock("./telemetry", () => ({
   captureEvent: (event: string, properties?: unknown) => captureEvent(event, properties),
 }));
 
-import { isOpenableUrl, openLink } from "./openLink";
+import { isOpenableUrl, openInBrowser, openLink } from "./openLink";
 
 beforeEach(() => {
   openBrowserAsync.mockReset().mockResolvedValue({ type: "dismiss" });
@@ -42,12 +42,13 @@ describe("openLink", () => {
     expect(openURL).not.toHaveBeenCalled();
   });
 
-  it("captures link_opened with the domain and context", async () => {
+  it("captures link_opened with the domain, context, and sheet target", async () => {
     await openLink("https://instagram.com/p/abc/", "organizer_instagram");
 
     expect(captureEvent).toHaveBeenCalledWith("link_opened", {
       domain: "instagram.com",
       context: "organizer_instagram",
+      target: "sheet",
     });
   });
 
@@ -57,6 +58,7 @@ describe("openLink", () => {
     expect(captureEvent).toHaveBeenCalledWith("link_opened", {
       domain: "example.com",
       context: null,
+      target: "sheet",
     });
   });
 
@@ -86,5 +88,41 @@ describe("openLink", () => {
 
     await expect(openLink("https://example.com")).resolves.toBeUndefined();
     expect(captureException).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("openInBrowser", () => {
+  it("opens valid URLs with Linking only, never the sheet", async () => {
+    await openInBrowser("https://gulchmag.substack.com/subscribe");
+
+    expect(openURL).toHaveBeenCalledWith("https://gulchmag.substack.com/subscribe");
+    expect(openBrowserAsync).not.toHaveBeenCalled();
+  });
+
+  it("captures link_opened with the browser target", async () => {
+    await openInBrowser("https://gulchmag.substack.com/p/issue-1", "newsletter_post");
+
+    expect(captureEvent).toHaveBeenCalledWith("link_opened", {
+      domain: "gulchmag.substack.com",
+      context: "newsletter_post",
+      target: "browser",
+    });
+  });
+
+  it("does nothing for null, empty, or non-http(s) URLs", async () => {
+    await openInBrowser(null);
+    await openInBrowser(undefined);
+    await openInBrowser("");
+    await openInBrowser("javascript:alert(1)");
+
+    expect(openURL).not.toHaveBeenCalled();
+    expect(captureEvent).not.toHaveBeenCalled();
+  });
+
+  it("swallows a Linking failure and reports it", async () => {
+    openURL.mockRejectedValue(new Error("no handler"));
+
+    await expect(openInBrowser("https://example.com")).resolves.toBeUndefined();
+    expect(captureException).toHaveBeenCalledTimes(1);
   });
 });

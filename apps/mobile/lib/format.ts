@@ -197,3 +197,20 @@ export const formatEventCardDate = (
     timeZone,
   }).format(date);
 };
+
+// Newsletter issue date, e.g. "May 7, 2026".
+export const formatPostDate = (
+  iso: string,
+  timeZone: string = DEFAULT_TIME_ZONE,
+): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  }).format(date);
+};

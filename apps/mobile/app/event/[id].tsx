@@ -192,6 +192,7 @@ function Content({
             <>
               <WebView
                 allowsInlineMediaPlayback
+                incognito
                 onError={() => setVideoOpen(false)}
                 renderLoading={() => (
                   <View style={styles.videoLoading}>
