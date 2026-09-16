@@ -35,7 +35,8 @@ const captureLinkOpened = (
 
 // Default path for external links: keep the user inside the app via the
 // system in-app browser sheet (which offers "open in browser" natively) and
-// fall back to the external browser only if the sheet fails. Never throws.
+// fall back to the external browser only if the sheet fails. The event is
+// recorded once, with the target that actually opened. Never throws.
 export async function openLink(
   url: string | null | undefined,
   context?: string,
@@ -44,15 +45,15 @@ export async function openLink(
     return;
   }
 
-  captureLinkOpened(url, context, "sheet");
-
   try {
     // "close" renders an ✕ on the iOS sheet instead of the default "Done" check.
     await WebBrowser.openBrowserAsync(url, { dismissButtonStyle: "close" });
+    captureLinkOpened(url, context, "sheet");
   } catch (browserError) {
     captureException(browserError);
     try {
       await Linking.openURL(url);
+      captureLinkOpened(url, context, "browser");
     } catch (linkingError) {
       captureException(linkingError);
     }
@@ -70,10 +71,9 @@ export async function openInBrowser(
     return;
   }
 
-  captureLinkOpened(url, context, "browser");
-
   try {
     await Linking.openURL(url);
+    captureLinkOpened(url, context, "browser");
   } catch (error) {
     captureException(error);
   }

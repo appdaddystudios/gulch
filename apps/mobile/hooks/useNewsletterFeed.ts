@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -138,6 +139,37 @@ export function useNewsletterFeed(): UseNewsletterFeedResult {
       tokenRef.current += 1;
     };
   }, [attempt]);
+
+  // Silent revalidation: the current list stays on screen, a failure is
+  // only reported. Owns the result like any other request.
+  const revalidate = useCallback(() => {
+    const token = ++tokenRef.current;
+    fetchAndStore()
+      .then((fresh) => {
+        if (token === tokenRef.current) {
+          setState(readyState(fresh));
+        }
+      })
+      .catch(captureException);
+  }, []);
+
+  // The tab navigator keeps this screen mounted, so the mount effect alone
+  // never re-checks freshness. Re-check whenever the tab regains focus; the
+  // ref is synced in an effect so the focus callback needs no state dep.
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+  useFocusEffect(
+    useCallback(() => {
+      const current = stateRef.current;
+      const idleWithFeed =
+        current.status === "ready" && current.feed && !current.refreshing;
+      if (idleWithFeed && !isNewsletterFeedFresh(current.feed)) {
+        revalidate();
+      }
+    }, [revalidate]),
+  );
 
   const reload = useCallback(() => {
     setState(INITIAL_FEED_STATE);

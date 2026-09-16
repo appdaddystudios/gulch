@@ -82,12 +82,26 @@ describe("openLink", () => {
     expect(captureException).toHaveBeenCalledTimes(1);
   });
 
+  it("records the fallback once, with the browser target", async () => {
+    openBrowserAsync.mockRejectedValue(new Error("sheet unavailable"));
+
+    await openLink("https://example.com/page", "organizer_instagram");
+
+    expect(captureEvent).toHaveBeenCalledTimes(1);
+    expect(captureEvent).toHaveBeenCalledWith("link_opened", {
+      domain: "example.com",
+      context: "organizer_instagram",
+      target: "browser",
+    });
+  });
+
   it("never throws even when both browser paths fail", async () => {
     openBrowserAsync.mockRejectedValue(new Error("sheet unavailable"));
     openURL.mockRejectedValue(new Error("no handler"));
 
     await expect(openLink("https://example.com")).resolves.toBeUndefined();
     expect(captureException).toHaveBeenCalledTimes(2);
+    expect(captureEvent).not.toHaveBeenCalled();
   });
 });
 
