@@ -60,12 +60,29 @@ const readStoredFeed = async (): Promise<NewsletterFeed | null> => {
   }
 };
 
-const fetchAndStore = async (): Promise<NewsletterFeed> => {
-  const feed = await fetchNewsletterFeed();
-  memoryFeed = feed;
-  // Best-effort persistence — a failed write must not fail the screen.
-  AsyncStorage.setItem(CACHE_KEY, JSON.stringify(feed)).catch(captureException);
-  return feed;
+// One network request at a time. An overlapping stale-cache revalidation
+// and pull-to-refresh share the same promise, so an older response can never
+// finish last and overwrite a newer feed (and its fetchedAt) in the cache.
+let inFlight: Promise<NewsletterFeed> | null = null;
+
+const fetchAndStore = (): Promise<NewsletterFeed> => {
+  if (inFlight) {
+    return inFlight;
+  }
+  const request = fetchNewsletterFeed()
+    .then((feed) => {
+      memoryFeed = feed;
+      // Best-effort persistence — a failed write must not fail the screen.
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(feed)).catch(
+        captureException,
+      );
+      return feed;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+  inFlight = request;
+  return request;
 };
 
 const readyState = (feed: NewsletterFeed): NewsletterFeedState => ({

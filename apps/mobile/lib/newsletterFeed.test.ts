@@ -227,6 +227,13 @@ describe("isNewsletterFeedFresh", () => {
     expect(isNewsletterFeedFresh(at("garbage"), NOW)).toBe(false);
   });
 
+  it("treats a fetchedAt in the future as stale", () => {
+    const now = new Date("2026-09-16T12:00:00Z");
+    expect(isNewsletterFeedFresh(at("2026-09-16T12:00:01Z"), now)).toBe(false);
+    expect(isNewsletterFeedFresh(at("2026-09-17T12:00:00Z"), now)).toBe(false);
+    expect(isNewsletterFeedFresh(at("2026-09-16T12:00:00Z"), now)).toBe(true);
+  });
+
   it("defaults now to the current time", () => {
     expect(isNewsletterFeedFresh(at(new Date().toISOString()))).toBe(true);
   });

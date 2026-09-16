@@ -249,5 +249,11 @@ export const isNewsletterFeedFresh = (
   ttlMs: number = NEWSLETTER_FEED_TTL_MS,
 ): boolean => {
   const fetchedAt = new Date(feed.fetchedAt).getTime();
-  return !Number.isNaN(fetchedAt) && now.getTime() - fetchedAt < ttlMs;
+  if (Number.isNaN(fetchedAt)) {
+    return false;
+  }
+  // A fetchedAt in the future means the clock moved backwards since the
+  // fetch; a negative age would otherwise pass the TTL check indefinitely.
+  const ageMs = now.getTime() - fetchedAt;
+  return ageMs >= 0 && ageMs < ttlMs;
 };
