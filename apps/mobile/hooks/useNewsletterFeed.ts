@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 
 import {
   fetchNewsletterFeed,
@@ -154,22 +155,40 @@ export function useNewsletterFeed(): UseNewsletterFeedResult {
   }, []);
 
   // The tab navigator keeps this screen mounted, so the mount effect alone
-  // never re-checks freshness. Re-check whenever the tab regains focus; the
-  // ref is synced in an effect so the focus callback needs no state dep.
+  // never re-checks freshness. Re-check whenever the tab regains focus and
+  // whenever the app returns to the foreground while the tab is focused;
+  // the ref is synced in an effect so neither callback needs a state dep.
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+  const revalidateIfStale = useCallback(() => {
+    const current = stateRef.current;
+    const idleWithFeed =
+      current.status === "ready" && current.feed && !current.refreshing;
+    if (idleWithFeed && !isNewsletterFeedFresh(current.feed)) {
+      revalidate();
+    }
+  }, [revalidate]);
+
+  const focusedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      const current = stateRef.current;
-      const idleWithFeed =
-        current.status === "ready" && current.feed && !current.refreshing;
-      if (idleWithFeed && !isNewsletterFeedFresh(current.feed)) {
-        revalidate();
-      }
-    }, [revalidate]),
+      focusedRef.current = true;
+      revalidateIfStale();
+      return () => {
+        focusedRef.current = false;
+      };
+    }, [revalidateIfStale]),
   );
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (status) => {
+      if (status === "active" && focusedRef.current) {
+        revalidateIfStale();
+      }
+    });
+    return () => subscription.remove();
+  }, [revalidateIfStale]);
 
   const reload = useCallback(() => {
     setState(INITIAL_FEED_STATE);
