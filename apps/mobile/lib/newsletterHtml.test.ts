@@ -6,6 +6,7 @@ import { parseNewsletterFeed, type NewsletterPost } from "./newsletterFeed";
 import {
   buildPostDocument,
   isSameDocumentUrl,
+  shouldAllowDocumentLoad,
   sanitizePreviewHtml,
 } from "./newsletterHtml";
 
@@ -126,5 +127,23 @@ describe("isSameDocumentUrl", () => {
     expect(isSameDocumentUrl("https://substack.com/")).toBe(false);
     expect(isSameDocumentUrl("http://gulchmag.substack.com/")).toBe(false);
     expect(isSameDocumentUrl("not a url")).toBe(false);
+  });
+});
+
+describe("shouldAllowDocumentLoad", () => {
+  it("allows the document's own URL only before the first load completes", () => {
+    expect(shouldAllowDocumentLoad("about:blank", false)).toBe(true);
+    expect(shouldAllowDocumentLoad("https://gulchmag.substack.com/", false)).toBe(true);
+  });
+
+  it("intercepts a publication-root link once the page is on screen", () => {
+    expect(shouldAllowDocumentLoad("https://gulchmag.substack.com/", true)).toBe(false);
+    expect(shouldAllowDocumentLoad("https://gulchmag.substack.com", true)).toBe(false);
+    expect(shouldAllowDocumentLoad("about:blank", true)).toBe(false);
+  });
+
+  it("never allows an external URL", () => {
+    expect(shouldAllowDocumentLoad("https://gulchmag.substack.com/p/issue-1", false)).toBe(false);
+    expect(shouldAllowDocumentLoad("https://substack.com/", true)).toBe(false);
   });
 });

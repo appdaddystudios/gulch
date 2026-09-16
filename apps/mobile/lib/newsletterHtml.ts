@@ -119,3 +119,12 @@ export const isSameDocumentUrl = (url: string): boolean => {
     return false;
   }
 };
+
+// Only the very first load may match the document's own URL. Once the
+// generated page is on screen, a preview link to the publication root
+// (`href="/"`) would otherwise load the real Substack home — and its cookie
+// banner — inside the WebView, the exact App Review 5.1.2(i) failure.
+export const shouldAllowDocumentLoad = (
+  url: string,
+  hasLoaded: boolean,
+): boolean => !hasLoaded && isSameDocumentUrl(url);

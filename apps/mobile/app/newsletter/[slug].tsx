@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewProps } from "react-native-webview";
@@ -16,7 +16,10 @@ import {
   NEWSLETTER_BASE_URL,
   type NewsletterPost,
 } from "../../lib/newsletterFeed";
-import { buildPostDocument, isSameDocumentUrl } from "../../lib/newsletterHtml";
+import {
+  buildPostDocument,
+  shouldAllowDocumentLoad,
+} from "../../lib/newsletterHtml";
 import { openInBrowser } from "../../lib/openLink";
 import { captureEvent } from "../../lib/telemetry";
 import { color, space, type as typePreset } from "../../theme";
@@ -103,12 +106,18 @@ function PostView({ post }: { readonly post: NewsletterPost }) {
     [post],
   );
 
+  // Flips once the generated document is on screen; from then on even a
+  // request for the document's own URL is a tapped link, not the load.
+  const loadedRef = useRef(false);
   const handleLoadRequest = useCallback((request: LoadRequest): boolean => {
-    if (isSameDocumentUrl(request.url)) {
+    if (shouldAllowDocumentLoad(request.url, loadedRef.current)) {
       return true;
     }
     void openInBrowser(request.url, "newsletter_post");
     return false;
+  }, []);
+  const handleLoadEnd = useCallback(() => {
+    loadedRef.current = true;
   }, []);
 
   // The post URL (not /subscribe) so the browser lands on this issue's
@@ -124,6 +133,7 @@ function PostView({ post }: { readonly post: NewsletterPost }) {
         allowsLinkPreview={false}
         incognito
         javaScriptEnabled={false}
+        onLoadEnd={handleLoadEnd}
         onShouldStartLoadWithRequest={handleLoadRequest}
         originWhitelist={ORIGIN_WHITELIST}
         setSupportMultipleWindows={false}
