@@ -30,7 +30,10 @@ type LoadRequest = Parameters<
 
 // Deep-link params are untrusted: only a plain path segment becomes a slug.
 const SLUG_PATTERN = /^[A-Za-z0-9._~-]+$/;
-const ORIGIN_WHITELIST = ["about:*", "https://*"];
+// Every scheme a preview link can carry must be listed, or the WebView opens
+// it through its own external path and skips handleLoadRequest (no
+// link_opened event, no error reporting). The handler intercepts them all.
+const ORIGIN_WHITELIST = ["about:*", "https://*", "http://*"];
 
 const toSlug = (value: string | readonly string[] | undefined): string | null => {
   const raw = Array.isArray(value) ? value[0] : value;
