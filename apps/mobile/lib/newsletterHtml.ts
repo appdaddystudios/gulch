@@ -120,11 +120,19 @@ export const isSameDocumentUrl = (url: string): boolean => {
   }
 };
 
+// A footnote or table-of-contents link (`href="#note-1"`) resolves against
+// the baseUrl to the publication root plus a fragment. That never leaves the
+// generated document, so it may scroll in place at any time.
+export const isFragmentNavigation = (url: string): boolean =>
+  isSameDocumentUrl(url) && url.includes("#");
+
 // Only the very first request may match the document's own URL. Once that
 // allowance is claimed, a preview link to the publication root (`href="/"`)
 // would otherwise load the real Substack home — and its cookie banner —
-// inside the WebView, the exact App Review 5.1.2(i) failure.
+// inside the WebView, the exact App Review 5.1.2(i) failure. In-document
+// fragment jumps stay allowed after the claim.
 export const shouldAllowDocumentLoad = (
   url: string,
   documentClaimed: boolean,
-): boolean => !documentClaimed && isSameDocumentUrl(url);
+): boolean =>
+  isFragmentNavigation(url) || (!documentClaimed && isSameDocumentUrl(url));

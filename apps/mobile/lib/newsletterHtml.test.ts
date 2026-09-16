@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseNewsletterFeed, type NewsletterPost } from "./newsletterFeed";
 import {
   buildPostDocument,
+  isFragmentNavigation,
   isSameDocumentUrl,
   shouldAllowDocumentLoad,
   sanitizePreviewHtml,
@@ -145,5 +146,33 @@ describe("shouldAllowDocumentLoad", () => {
   it("never allows an external URL", () => {
     expect(shouldAllowDocumentLoad("https://gulchmag.substack.com/p/issue-1", false)).toBe(false);
     expect(shouldAllowDocumentLoad("https://substack.com/", true)).toBe(false);
+  });
+
+  it("keeps in-document fragment links inside the preview after the claim", () => {
+    expect(shouldAllowDocumentLoad("https://gulchmag.substack.com/#note-1", true)).toBe(true);
+    expect(shouldAllowDocumentLoad("https://gulchmag.substack.com/#", true)).toBe(true);
+    expect(shouldAllowDocumentLoad("about:blank#top", true)).toBe(true);
+  });
+
+  it("still intercepts a fragment on any other page or origin", () => {
+    expect(shouldAllowDocumentLoad("https://gulchmag.substack.com/p/issue-1#note-1", true)).toBe(false);
+    expect(shouldAllowDocumentLoad("https://gulchmag.substack.com/?utm=x#note-1", true)).toBe(false);
+    expect(shouldAllowDocumentLoad("https://substack.com/#note-1", true)).toBe(false);
+  });
+});
+
+describe("isFragmentNavigation", () => {
+  it("is true only for the document's own URL carrying a fragment", () => {
+    expect(isFragmentNavigation("https://gulchmag.substack.com/#note-1")).toBe(true);
+    expect(isFragmentNavigation("https://gulchmag.substack.com#note-1")).toBe(true);
+    expect(isFragmentNavigation("about:blank#note-1")).toBe(true);
+  });
+
+  it("is false without a fragment or off the document", () => {
+    expect(isFragmentNavigation("https://gulchmag.substack.com/")).toBe(false);
+    expect(isFragmentNavigation("about:blank")).toBe(false);
+    expect(isFragmentNavigation("https://gulchmag.substack.com/p/issue-1#x")).toBe(false);
+    expect(isFragmentNavigation("https://substack.com/#x")).toBe(false);
+    expect(isFragmentNavigation("not a url#x")).toBe(false);
   });
 });
