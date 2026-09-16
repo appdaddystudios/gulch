@@ -9,7 +9,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { Header } from "../../components/Header";
 import {
   useNewsletterPost,
-  type NewsletterPostState,
+  type UseNewsletterPostResult,
 } from "../../hooks/useNewsletterFeed";
 import { formatPostDate } from "../../lib/format";
 import {
@@ -61,7 +61,7 @@ function Content({
   state,
   slug,
 }: {
-  readonly state: NewsletterPostState;
+  readonly state: UseNewsletterPostResult;
   readonly slug: string | null;
 }) {
   if (state.status === "loading") {
@@ -83,13 +83,18 @@ function Content({
               : "It may have moved. You can still read it on Substack."
           }
           action={
-            <Button
-              label="Open on Substack"
-              tone="primary"
-              onPress={() =>
-                void openInBrowser(substackPostUrl(slug), "newsletter_post")
-              }
-            />
+            <View style={styles.actions}>
+              {state.status === "error" ? (
+                <Button label="Try again" tone="primary" onPress={state.retry} />
+              ) : null}
+              <Button
+                label="Open on Substack"
+                tone={state.status === "error" ? "outline" : "primary"}
+                onPress={() =>
+                  void openInBrowser(substackPostUrl(slug), "newsletter_post")
+                }
+              />
+            </View>
           }
         />
       </View>
@@ -167,6 +172,9 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  actions: {
+    gap: space.md,
   },
   centered: {
     flex: 1,

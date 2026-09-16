@@ -206,12 +206,18 @@ const findPost = (
 ): NewsletterPost | null =>
   feed?.posts.find((post) => post.slug === slug) ?? null;
 
+export type UseNewsletterPostResult = NewsletterPostState & {
+  // Runs the memory → storage → network resolution again after an error.
+  readonly retry: () => void;
+};
+
 // Resolves one issue: memory → storage → network. A null slug (malformed deep
 // link) resolves to "missing" without any I/O.
-export function useNewsletterPost(slug: string | null): NewsletterPostState {
+export function useNewsletterPost(slug: string | null): UseNewsletterPostResult {
   const [state, setState] = useState<NewsletterPostState>(() =>
     slug ? { status: "loading" } : { status: "ready", post: null },
   );
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!slug) {
@@ -236,8 +242,10 @@ export function useNewsletterPost(slug: string | null): NewsletterPostState {
         }
       } catch (error) {
         captureException(error);
+        // A cache miss says nothing about the issue (the cache may predate
+        // it); only a successful fetch can call it missing.
         if (!cancelled) {
-          setState(cached ? { status: "ready", post: null } : { status: "error" });
+          setState({ status: "error" });
         }
       }
     };
@@ -246,7 +254,12 @@ export function useNewsletterPost(slug: string | null): NewsletterPostState {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, attempt]);
 
-  return state;
+  const retry = useCallback(() => {
+    setState({ status: "loading" });
+    setAttempt((count) => count + 1);
+  }, []);
+
+  return { ...state, retry };
 }
