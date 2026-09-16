@@ -6,9 +6,27 @@ import {
   formatEventDateTime,
   formatEventTimeCompact,
   formatFavoriteCount,
+  formatPostDate,
   formatWeekRange,
   weekStartKey,
 } from "./format";
+
+describe("formatPostDate", () => {
+  it("formats a long month, day, and year without time", () => {
+    expect(formatPostDate("2026-05-07T21:04:39.000Z", "UTC")).toBe(
+      "May 7, 2026",
+    );
+  });
+
+  it("uses the Atlanta-local day by default", () => {
+    // 03:30Z on Sep 16 is still Sep 15 in America/New_York.
+    expect(formatPostDate("2026-09-16T03:30:00Z")).toBe("September 15, 2026");
+  });
+
+  it("returns an empty string for an invalid date", () => {
+    expect(formatPostDate("not a date")).toBe("");
+  });
+});
 
 describe("formatFavoriteCount", () => {
   it("returns null at zero so the date subtitle shows instead", () => {
