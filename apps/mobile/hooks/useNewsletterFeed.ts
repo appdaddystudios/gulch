@@ -230,12 +230,23 @@ export type UseNewsletterPostResult = NewsletterPostState & {
   readonly retry: () => void;
 };
 
+const LOADING_POST: NewsletterPostState = { status: "loading" };
+const MISSING_POST: NewsletterPostState = { status: "ready", post: null };
+
+// Resolution results are tagged with the slug they belong to, so a route
+// whose slug changes while mounted shows `loading` (or "missing" for null)
+// immediately instead of the previous issue, without a setState in an effect.
+type ResolvedPost = {
+  readonly slug: string | null;
+  readonly state: NewsletterPostState;
+};
+
+const INITIAL_RESOLVED: ResolvedPost = { slug: null, state: MISSING_POST };
+
 // Resolves one issue: memory → storage → network. A null slug (malformed deep
 // link) resolves to "missing" without any I/O.
 export function useNewsletterPost(slug: string | null): UseNewsletterPostResult {
-  const [state, setState] = useState<NewsletterPostState>(() =>
-    slug ? { status: "loading" } : { status: "ready", post: null },
-  );
+  const [resolved, setResolved] = useState<ResolvedPost>(INITIAL_RESOLVED);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -243,6 +254,11 @@ export function useNewsletterPost(slug: string | null): UseNewsletterPostResult 
       return;
     }
     let cancelled = false;
+    const settle = (state: NewsletterPostState) => {
+      if (!cancelled) {
+        setResolved({ slug, state });
+      }
+    };
 
     const resolve = async () => {
       const cached = await readStoredFeed();
@@ -251,21 +267,17 @@ export function useNewsletterPost(slug: string | null): UseNewsletterPostResult 
         return;
       }
       if (hit) {
-        setState({ status: "ready", post: hit });
+        settle({ status: "ready", post: hit });
         return;
       }
       try {
         const fresh = await fetchAndStore();
-        if (!cancelled) {
-          setState({ status: "ready", post: findPost(fresh, slug) });
-        }
+        settle({ status: "ready", post: findPost(fresh, slug) });
       } catch (error) {
         captureException(error);
         // A cache miss says nothing about the issue (the cache may predate
         // it); only a successful fetch can call it missing.
-        if (!cancelled) {
-          setState({ status: "error" });
-        }
+        settle({ status: "error" });
       }
     };
     void resolve();
@@ -276,9 +288,11 @@ export function useNewsletterPost(slug: string | null): UseNewsletterPostResult 
   }, [slug, attempt]);
 
   const retry = useCallback(() => {
-    setState({ status: "loading" });
+    setResolved(INITIAL_RESOLVED);
     setAttempt((count) => count + 1);
   }, []);
 
+  const state =
+    resolved.slug === slug ? resolved.state : slug ? LOADING_POST : MISSING_POST;
   return { ...state, retry };
 }

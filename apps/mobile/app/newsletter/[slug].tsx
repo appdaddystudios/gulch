@@ -101,7 +101,8 @@ function Content({
     );
   }
 
-  return <PostView post={state.post} />;
+  // Keyed by slug so a new issue gets a fresh WebView and document allowance.
+  return <PostView key={state.post.slug} post={state.post} />;
 }
 
 // The WebView only ever loads a document we generate (JavaScript off,
