@@ -106,18 +106,22 @@ function PostView({ post }: { readonly post: NewsletterPost }) {
     [post],
   );
 
-  // Flips once the generated document is on screen; from then on even a
-  // request for the document's own URL is a tapped link, not the load.
-  const loadedRef = useRef(false);
+  // The generated document gets exactly one allowance for its own URL. It is
+  // consumed the moment that request is accepted (iOS routes the initial
+  // load through here) or when the document starts loading (Android does
+  // not) — not at onLoadEnd, which remote images can hold open while a
+  // preview link to the publication root is already tappable.
+  const documentClaimedRef = useRef(false);
   const handleLoadRequest = useCallback((request: LoadRequest): boolean => {
-    if (shouldAllowDocumentLoad(request.url, loadedRef.current)) {
+    if (shouldAllowDocumentLoad(request.url, documentClaimedRef.current)) {
+      documentClaimedRef.current = true;
       return true;
     }
     void openInBrowser(request.url, "newsletter_post");
     return false;
   }, []);
-  const handleLoadEnd = useCallback(() => {
-    loadedRef.current = true;
+  const handleLoadStart = useCallback(() => {
+    documentClaimedRef.current = true;
   }, []);
 
   // The post URL (not /subscribe) so the browser lands on this issue's
@@ -133,7 +137,7 @@ function PostView({ post }: { readonly post: NewsletterPost }) {
         allowsLinkPreview={false}
         incognito
         javaScriptEnabled={false}
-        onLoadEnd={handleLoadEnd}
+        onLoadStart={handleLoadStart}
         onShouldStartLoadWithRequest={handleLoadRequest}
         originWhitelist={ORIGIN_WHITELIST}
         setSupportMultipleWindows={false}
