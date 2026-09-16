@@ -150,3 +150,7 @@ bun.lock
 Covik Sans/**/*
 # Serena MCP project cache
 .serena/
+
+# Google Play service-account keys must never enter the repo
+*service-account*.json
+google-services*.json
