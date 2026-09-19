@@ -10,29 +10,32 @@ export const EVENT_CARD_BORDER = 2;
 
 // Panel at its tallest: padding 16×2 + time pill 20 + name 2×24 + meta 21 +
 // status row 25 (small Badge: 4+1 vertical padding/border each side around a
-// 15pt label) + three 4pt gaps.
+// 15pt label) + three 4pt gaps. The text rows scale with the system font
+// size (React Native scales Text by the window's fontScale); the pill is a
+// fixed 20pt box and the paddings/gaps are fixed too.
 const PANEL_PADDING = 16;
 const PANEL_GAP = 4;
 const PILL_HEIGHT = 20;
 const NAME_HEIGHT = 2 * 24;
 const META_HEIGHT = 21;
 const STATUS_HEIGHT = 25;
-export const EVENT_CARD_PANEL_HEIGHT =
-  2 * PANEL_PADDING +
-  PILL_HEIGHT +
-  NAME_HEIGHT +
-  META_HEIGHT +
-  STATUS_HEIGHT +
-  3 * PANEL_GAP;
+const PANEL_FIXED = 2 * PANEL_PADDING + PILL_HEIGHT + 3 * PANEL_GAP;
+const PANEL_TEXT = NAME_HEIGHT + META_HEIGHT + STATUS_HEIGHT;
+export const eventCardPanelHeight = (fontScale = 1): number =>
+  PANEL_FIXED + Math.ceil(PANEL_TEXT * Math.max(fontScale, 1));
+export const EVENT_CARD_PANEL_HEIGHT = eventCardPanelHeight();
 
 // Hero height for a card of the given outer width (the hero sits inside the
 // border on both sides).
 export const eventHeroHeight = (cardWidth: number): number =>
   Math.round((cardWidth - 2 * EVENT_CARD_BORDER) / EVENT_HERO_ASPECT);
 
-// Outer height of a card whose panel is fixed at its tallest.
-export const eventCardHeight = (cardWidth: number): number =>
-  eventHeroHeight(cardWidth) + EVENT_CARD_PANEL_HEIGHT + 2 * EVENT_CARD_BORDER;
+// Outer height of a card whose panel is fixed at its tallest for the given
+// system font scale.
+export const eventCardHeight = (cardWidth: number, fontScale = 1): number =>
+  eventHeroHeight(cardWidth) +
+  eventCardPanelHeight(fontScale) +
+  2 * EVENT_CARD_BORDER;
 
 export const eventTimeLabel = (event: EventListItem): string =>
   formatEventTimeCompact(event.startAt, {
@@ -45,9 +48,28 @@ export const eventTimeLabel = (event: EventListItem): string =>
 export const eventMetaLabel = (event: EventListItem): string | null =>
   event.organizerName ?? event.locationName;
 
-// "<name>, <meta>, <time>" for VoiceOver — one utterance per card, and the
-// deck container announces its top card with the same text.
+export type EventStatus = "Editor's Pick" | "RSVP Required" | "Sponsored";
+
+// The one status a card shows, in this precedence (an Editor's Pick that also
+// needs an RSVP shows the pick).
+export const eventStatusLabel = (event: EventListItem): EventStatus | null =>
+  event.editorsPick
+    ? "Editor's Pick"
+    : event.ticketsRequired
+      ? "RSVP Required"
+      : event.sponsored
+        ? "Sponsored"
+        : null;
+
+// "<name>, <meta>, <time>, <status>" for VoiceOver — one utterance per card
+// carrying everything the card shows; the deck container announces its top
+// card with the same text.
 export const eventCardLabel = (event: EventListItem): string =>
-  [event.name, eventMetaLabel(event), eventTimeLabel(event)]
+  [
+    event.name,
+    eventMetaLabel(event),
+    eventTimeLabel(event),
+    eventStatusLabel(event),
+  ]
     .filter((part): part is string => Boolean(part))
     .join(", ");

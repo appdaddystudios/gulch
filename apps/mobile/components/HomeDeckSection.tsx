@@ -88,7 +88,7 @@ export function HomeDeckSection({
   onLayout,
 }: HomeDeckSectionProps) {
   const deckRef = useRef<SwipeDeckRef>(null);
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const deck = useHomeDeck(events, savedIds, savedCountMatches);
 
   // First-run swipe hint: once a card can be nudged, nudge it right then
@@ -182,7 +182,8 @@ export function HomeDeckSection({
   }
 
   const cardWidth = width - CARD_INSET;
-  const cardHeight = eventCardHeight(cardWidth);
+  // Larger system text scales the panel's text rows; the slot follows.
+  const cardHeight = eventCardHeight(cardWidth, fontScale);
   const height = cardHeight + STACK_PEEK * STACK_DEPTH + STACK_BOTTOM_GAP;
   const label = deck.top
     ? `${eventCardLabel(deck.top.event)}. ${deck.remaining} to go`

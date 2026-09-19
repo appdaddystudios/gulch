@@ -8,6 +8,7 @@ import {
   EVENT_HERO_ASPECT,
   eventCardLabel,
   eventMetaLabel,
+  eventStatusLabel,
   eventTimeLabel,
 } from "../lib/eventCard";
 import type { EventListItem } from "../lib/events";
@@ -50,6 +51,7 @@ export function EventCard({
   const hasImage = Boolean(event.imageUrl) && !imageFailed;
   const timeLabel = eventTimeLabel(event);
   const metaLabel = eventMetaLabel(event);
+  const status = eventStatusLabel(event);
 
   return (
     <Pressable
@@ -114,15 +116,15 @@ export function EventCard({
           </Text>
         ) : null}
 
-        {event.editorsPick ? (
-          <Badge label="Editor's Pick" variant="editorsPick" />
-        ) : event.ticketsRequired ? (
+        {status === "Editor's Pick" ? (
+          <Badge label={status} variant="editorsPick" />
+        ) : status === "RSVP Required" ? (
           <View style={styles.statusRow}>
             <MailIcon size={16} color={color.khakis} />
-            <Text style={styles.statusLabel}>RSVP Required</Text>
+            <Text style={styles.statusLabel}>{status}</Text>
           </View>
-        ) : event.sponsored ? (
-          <Text style={styles.sponsored}>Sponsored</Text>
+        ) : status === "Sponsored" ? (
+          <Text style={styles.sponsored}>{status}</Text>
         ) : null}
       </View>
     </Pressable>

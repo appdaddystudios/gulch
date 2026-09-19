@@ -5,8 +5,10 @@ import {
   EVENT_CARD_PANEL_HEIGHT,
   eventCardHeight,
   eventCardLabel,
+  eventCardPanelHeight,
   eventHeroHeight,
   eventMetaLabel,
+  eventStatusLabel,
   eventTimeLabel,
 } from "./eventCard";
 import type { EventListItem } from "./events";
@@ -44,6 +46,26 @@ describe("eventHeroHeight / eventCardHeight", () => {
     );
     expect(EVENT_CARD_PANEL_HEIGHT).toBe(158);
   });
+
+  it("grows the text rows with the system font scale, never shrinks them", () => {
+    // 94pt of text at 1.5× → 141; the pill, paddings, and gaps stay fixed.
+    expect(eventCardPanelHeight(1.5)).toBe(64 + 141);
+    expect(eventCardPanelHeight(0.85)).toBe(EVENT_CARD_PANEL_HEIGHT);
+    expect(eventCardHeight(370, 1.5) - eventCardHeight(370)).toBe(141 - 94);
+  });
+});
+
+describe("eventStatusLabel", () => {
+  it("picks one status in precedence order", () => {
+    expect(eventStatusLabel(event())).toBeNull();
+    expect(eventStatusLabel(event({ sponsored: true }))).toBe("Sponsored");
+    expect(eventStatusLabel(event({ sponsored: true, ticketsRequired: true }))).toBe(
+      "RSVP Required",
+    );
+    expect(
+      eventStatusLabel(event({ sponsored: true, ticketsRequired: true, editorsPick: true })),
+    ).toBe("Editor's Pick");
+  });
 });
 
 describe("eventMetaLabel", () => {
@@ -70,5 +92,10 @@ describe("eventCardLabel", () => {
     expect(eventCardLabel(event({ locationName: null }))).toMatch(
       /^Opening Night, Sat Sep 19/,
     );
+  });
+
+  it("announces the visible status last", () => {
+    expect(eventCardLabel(event({ ticketsRequired: true }))).toMatch(/, RSVP Required$/);
+    expect(eventCardLabel(event({ editorsPick: true }))).toMatch(/, Editor's Pick$/);
   });
 });
