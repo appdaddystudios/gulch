@@ -28,11 +28,18 @@ const STRAY_TAG_PATTERN = new RegExp(
 // class="button …"><span>Label</span></a></p>`, nearly all pointing at
 // /subscribe) and the "Read more" teaser it appends to a truncated post
 // (`<p>\n <a href="…/p/slug">\n Read more\n </a>\n </p>` as the final
-// paragraph). Neither belongs in the app: it renders prose and images only.
+// paragraph, linking to the post itself). Neither belongs in the app: it
+// renders prose and images only. The teaser match requires a link into the
+// publication's post path so an editor's own closing "Read more" link to
+// anywhere else survives.
 const CTA_BLOCK_PATTERN =
   /<p\b[^>]*\bclass\s*=\s*"[^"]*\bbutton-wrapper\b[^"]*"[^>]*>[\s\S]*?<\/p>/gi;
-const READ_MORE_TAIL_PATTERN =
-  /<p>\s*<a\b[^>]*>\s*Read more\s*<\/a>\s*<\/p>\s*$/i;
+const escapeRegExp = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const READ_MORE_TAIL_PATTERN = new RegExp(
+  `<p>\\s*<a\\b[^>]*\\bhref\\s*=\\s*"${escapeRegExp(NEWSLETTER_BASE_URL)}p/[^"]*"[^>]*>\\s*Read more\\s*<\\/a>\\s*<\\/p>\\s*$`,
+  "i",
+);
 const EVENT_HANDLER_ATTR = /\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
 const SCRIPT_URL_ATTR =
   /\s+(?:href|src)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi;

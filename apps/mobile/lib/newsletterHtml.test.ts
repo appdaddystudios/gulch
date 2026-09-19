@@ -61,8 +61,14 @@ describe("sanitizePreviewHtml", () => {
       '<p>last</p>\n      <p>\n          <a href="https://gulchmag.substack.com/p/issue-1">\n              Read more\n          </a>\n      </p>\n   ';
     expect(sanitizePreviewHtml(teaser)).toBe("<p>last</p>\n      ");
 
-    const inline = '<p><a href="https://x">Read more</a></p><p>after</p>';
+    const inline =
+      '<p><a href="https://gulchmag.substack.com/p/issue-1">Read more</a></p><p>after</p>';
     expect(sanitizePreviewHtml(inline)).toBe(inline);
+  });
+
+  it("keeps an editor's closing Read more link that points elsewhere", () => {
+    const html = '<p>last</p><p><a href="https://example.com/context">Read more</a></p>';
+    expect(sanitizePreviewHtml(html)).toBe(html);
   });
 
   it("drops inline event handlers and javascript: URLs", () => {
