@@ -180,8 +180,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingBottom: space.xxl,
-    paddingHorizontal: space.md,
+    paddingBottom: space.xxl + space.xs,
+    paddingHorizontal: space.xl,
     paddingTop: space.md,
   },
   sectionTitle: {

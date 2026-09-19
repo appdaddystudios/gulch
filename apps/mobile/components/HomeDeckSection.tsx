@@ -17,12 +17,13 @@ import type {
   LayoutChangeEvent,
 } from "react-native";
 
-import { DeckCard, deckCardLabel } from "./DeckCard";
 import { EmptyState } from "./EmptyState";
+import { EventCard } from "./EventCard";
 import { SwipeStamps } from "./SwipeStamps";
 import { Toast } from "./Toast";
 import { useHomeDeck } from "../hooks/useHomeDeck";
 import type { DeckEntry } from "../lib/deck";
+import { eventCardHeight, eventCardLabel } from "../lib/eventCard";
 import {
   hasSeenDeckHint,
   isDeckHintable,
@@ -49,7 +50,8 @@ const DECK_CONFIG: Partial<SwipeDeckConfig> = {
 };
 const STACK_PEEK = DECK_CONFIG.stackOffsetY ?? 0;
 const STACK_DEPTH = (DECK_CONFIG.visibleCards ?? 1) - 1;
-// Figma: 370 on a 402pt screen → 16pt inset each side. Square card.
+// Figma: 370 on a 402pt screen → 16pt inset each side. The card is the shared
+// stacked EventCard, so its height follows from its width (4:3 hero + panel).
 const CARD_INSET = space.xl * 2;
 const STACK_BOTTOM_GAP = space.md;
 // Let the deck settle on screen before the first-run nudge draws the eye.
@@ -86,7 +88,7 @@ export function HomeDeckSection({
   onLayout,
 }: HomeDeckSectionProps) {
   const deckRef = useRef<SwipeDeckRef>(null);
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const deck = useHomeDeck(events, savedIds, savedCountMatches);
 
   // First-run swipe hint: once a card can be nudged, nudge it right then
@@ -179,10 +181,12 @@ export function HomeDeckSection({
     );
   }
 
-  const cardSize = width - CARD_INSET;
-  const height = cardSize + STACK_PEEK * STACK_DEPTH + STACK_BOTTOM_GAP;
+  const cardWidth = width - CARD_INSET;
+  // Larger system text scales the panel's text rows; the slot follows.
+  const cardHeight = eventCardHeight(cardWidth, fontScale);
+  const height = cardHeight + STACK_PEEK * STACK_DEPTH + STACK_BOTTOM_GAP;
   const label = deck.top
-    ? `${deckCardLabel(deck.top.event)}. ${deck.remaining} to go`
+    ? `${eventCardLabel(deck.top.event)}. ${deck.remaining} to go`
     : `Event deck, ${deck.remaining} to go`;
 
   const onAccessibilityAction = (event: AccessibilityActionEvent) => {
@@ -219,7 +223,7 @@ export function HomeDeckSection({
       <SwipeDeck<DeckEntry>
         ref={deckRef}
         key={`deck-${deck.deckKey}`}
-        cardStyle={{ width: cardSize, height: cardSize, top: 0 }}
+        cardStyle={{ width: cardWidth, height: cardHeight, top: 0 }}
         config={DECK_CONFIG}
         data={deck.entries as DeckEntry[]}
         keyExtractor={(entry) => entry.key}
@@ -229,7 +233,7 @@ export function HomeDeckSection({
         onSwipeRight={deck.onSwipeRight}
         renderCard={(entry, _index, progress) => (
           <>
-            <DeckCard event={entry.event} />
+            <EventCard event={entry.event} fill />
             <SwipeStamps progress={progress} />
           </>
         )}

@@ -471,8 +471,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   listContent: {
-    paddingBottom: space.xxl,
-    paddingHorizontal: space.md,
+    // Newsletter-list inset; the extra bottom room keeps the last card's
+    // 4pt hard shadow from being clipped.
+    paddingBottom: space.xxl + space.xs,
+    paddingHorizontal: space.xl,
   },
   calendarHeader: {
     paddingBottom: space.lg,
