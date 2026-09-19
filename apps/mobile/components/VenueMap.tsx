@@ -29,7 +29,7 @@ import {
   venueSheetA11yLabel,
   venueSheetCounter,
 } from "../lib/venueSheet";
-import { color, radius, space, type as typePreset } from "../theme";
+import { color, space, type as typePreset } from "../theme";
 
 // Expo inlines only static dot-notation env reads.
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
@@ -261,7 +261,7 @@ function VenueCards({
   const hasMore = count > 1;
   // Narrower than the window when there are several events so the next card
   // peeks in from the right — the cue that the row scrolls.
-  const cardWidth = venueCardWidth(width, space.md, count);
+  const cardWidth = venueCardWidth(width, space.xl, count);
   const [index, setIndex] = useState(0);
   const counter = venueSheetCounter(index, count);
   // FlatList requires this callback's identity to stay fixed for the list's
@@ -407,13 +407,10 @@ const styles = StyleSheet.create({
   },
   venueCardsRow: {
     gap: space.md,
-    paddingHorizontal: space.md,
+    // Room for the card's 4pt hard shadow.
+    paddingBottom: space.xs,
+    paddingHorizontal: space.xl,
   },
-  venueCard: {
-    backgroundColor: color.brown400,
-    borderColor: color.oreo,
-    borderRadius: radius.image,
-    borderWidth: 1,
-    paddingHorizontal: space.md,
-  },
+  // The EventCard carries its own chrome; this only fixes the page width.
+  venueCard: {},
 });

@@ -3,71 +3,100 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Badge } from "./Badge";
 import { GulchLogo, HeartIcon, MailIcon } from "./icons";
+import {
+  EVENT_CARD_BORDER,
+  EVENT_HERO_ASPECT,
+  eventCardLabel,
+  eventMetaLabel,
+  eventTimeLabel,
+} from "../lib/eventCard";
 import type { EventListItem } from "../lib/events";
-import { formatEventTimeCompact } from "../lib/format";
-import { color, radius, space, type as typePreset } from "../theme";
+import {
+  color,
+  font,
+  hardShadow,
+  radius,
+  space,
+  type as typePreset,
+} from "../theme";
 
-const IMAGE_SIZE = 104;
-const BOOKMARK_SIZE = 44;
+const HEART_SIZE = 44;
+// Hero corners sit inside the card border.
+const HERO_RADIUS = radius.card - EVENT_CARD_BORDER;
 
 type EventCardProps = {
   readonly event: EventListItem;
   readonly onPress?: () => void;
-  readonly editorsPick?: boolean;
-  readonly sponsored?: boolean;
   readonly saved?: boolean;
   readonly onToggleSave?: () => void;
+  // Deck face: the card fills the slot the engine gives it and shows no
+  // heart, since swiping right is the save gesture there.
+  readonly fill?: boolean;
 };
 
+// The one event card: NewsletterPostCard chrome (brown surface, 2px border,
+// hard shadow), a 4:3 hero with the save heart floating top-right, then the
+// time pill, name, organizer-or-venue line, and the status row.
 export function EventCard({
   event,
   onPress,
-  editorsPick,
-  sponsored,
   saved = false,
   onToggleSave,
+  fill = false,
 }: EventCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   // Any stored image renders — a transient pipeline status ("pending"/"failed"
   // after a re-mark) must not hide a previously good rehosted image.
   const hasImage = Boolean(event.imageUrl) && !imageFailed;
-  const timeLabel = formatEventTimeCompact(event.startAt, {
-    endAt: event.endAt,
-    customTimeDescription: event.customTimeDescription,
-  });
-  // Editor's Pick / Sponsored are data-driven; explicit props still win.
-  const isEditorsPick = editorsPick ?? event.editorsPick;
-  const isSponsored = sponsored ?? event.sponsored;
-  // The card's second line is the organizer when present, else the venue —
-  // most events carry no explicit organizer, so the location reads instead.
-  const metaLabel = event.organizerName ?? event.locationName;
+  const timeLabel = eventTimeLabel(event);
+  const metaLabel = eventMetaLabel(event);
 
   return (
     <Pressable
+      accessibilityLabel={eventCardLabel(event)}
       accessibilityRole={onPress ? "button" : undefined}
       disabled={!onPress}
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,
+        fill ? styles.fill : null,
         pressed && onPress ? styles.pressed : null,
       ]}
     >
-      <View style={styles.imageWrapper}>
+      <View style={styles.hero}>
         {hasImage ? (
           <Image
             accessibilityIgnoresInvertColors
             onError={() => setImageFailed(true)}
+            resizeMode="cover"
             source={{ uri: event.imageUrl as string }}
             style={styles.image}
           />
         ) : (
           <View style={styles.placeholder}>
-            <GulchLogo width={72} height={9} />
+            <GulchLogo width={120} height={15} />
           </View>
+        )}
+        {fill ? null : (
+          <Pressable
+            accessibilityLabel={saved ? "Remove from saved" : "Save event"}
+            accessibilityRole="button"
+            accessibilityState={{ selected: saved }}
+            disabled={!onToggleSave}
+            hitSlop={6}
+            onPress={onToggleSave}
+            style={styles.heart}
+          >
+            <HeartIcon
+              size={24}
+              color={saved ? color.gulchGreen : color.white}
+              filled={saved}
+            />
+          </Pressable>
         )}
       </View>
 
-      <View style={styles.content}>
+      <View style={[styles.panel, fill ? styles.fill : null]}>
         {timeLabel ? (
           <View style={styles.timePill}>
             <Text style={styles.timeLabel} numberOfLines={1}>
@@ -76,86 +105,78 @@ export function EventCard({
           </View>
         ) : null}
 
-        <View style={styles.nameBlock}>
-          <Text style={styles.name} numberOfLines={2}>
-            {event.name}
+        <Text style={styles.name} numberOfLines={2}>
+          {event.name}
+        </Text>
+        {metaLabel ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {metaLabel}
           </Text>
-          {metaLabel ? (
-            <Text style={styles.meta} numberOfLines={1}>
-              {metaLabel}
-            </Text>
-          ) : null}
-        </View>
+        ) : null}
 
-        {isEditorsPick ? (
+        {event.editorsPick ? (
           <Badge label="Editor's Pick" variant="editorsPick" />
         ) : event.ticketsRequired ? (
-          <View style={styles.tixRow}>
+          <View style={styles.statusRow}>
             <MailIcon size={16} color={color.khakis} />
-            <Text style={styles.tixLabel}>RSVP Required</Text>
+            <Text style={styles.statusLabel}>RSVP Required</Text>
           </View>
-        ) : isSponsored ? (
+        ) : event.sponsored ? (
           <Text style={styles.sponsored}>Sponsored</Text>
         ) : null}
       </View>
-
-      <Pressable
-        accessibilityLabel={saved ? "Remove from saved" : "Save event"}
-        accessibilityRole="button"
-        accessibilityState={{ selected: saved }}
-        disabled={!onToggleSave}
-        hitSlop={6}
-        onPress={onToggleSave}
-        style={styles.bookmark}
-      >
-        <HeartIcon
-          size={24}
-          color={saved ? color.gulchGreen : color.white}
-          filled={saved}
-        />
-      </Pressable>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    alignItems: "center",
-    flexDirection: "row",
-    height: 106,
+    ...hardShadow,
+    backgroundColor: color.brown400,
+    borderColor: color.oreo,
+    borderRadius: radius.card,
+    borderWidth: EVENT_CARD_BORDER,
     width: "100%",
+  },
+  fill: {
+    flex: 1,
   },
   pressed: {
     opacity: 0.85,
   },
-  imageWrapper: {
-    height: IMAGE_SIZE,
-    width: IMAGE_SIZE,
+  hero: {
+    aspectRatio: EVENT_HERO_ASPECT,
+    backgroundColor: color.oreo,
+    borderTopLeftRadius: HERO_RADIUS,
+    borderTopRightRadius: HERO_RADIUS,
+    overflow: "hidden",
+    width: "100%",
   },
   image: {
-    borderColor: color.oreo,
-    borderRadius: radius.image,
-    borderWidth: 0.5,
-    height: IMAGE_SIZE,
-    width: IMAGE_SIZE,
+    height: "100%",
+    width: "100%",
   },
   placeholder: {
     alignItems: "center",
-    backgroundColor: color.gulchGreen,
-    borderColor: color.oreo,
-    borderRadius: radius.image,
-    borderWidth: 0.5,
-    height: IMAGE_SIZE,
-    justifyContent: "center",
-    width: IMAGE_SIZE,
-  },
-  content: {
-    flex: 1,
-    gap: space.xs,
     height: "100%",
+    backgroundColor: color.gulchGreen,
     justifyContent: "center",
-    paddingLeft: space.lg,
-    paddingVertical: space.md,
+    width: "100%",
+  },
+  heart: {
+    alignItems: "center",
+    backgroundColor: color.darkChocolate,
+    borderRadius: HEART_SIZE / 2,
+    height: HEART_SIZE,
+    justifyContent: "center",
+    position: "absolute",
+    right: space.md,
+    top: space.md,
+    width: HEART_SIZE,
+  },
+  panel: {
+    gap: space.xs,
+    padding: space.xl,
   },
   timePill: {
     alignItems: "center",
@@ -174,36 +195,28 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     lineHeight: undefined,
   },
-  nameBlock: {
-    alignItems: "flex-start",
-  },
   name: {
-    ...typePreset.captionBold12,
+    ...typePreset.body16,
     color: color.white,
+    fontFamily: font.bold,
   },
   meta: {
-    ...typePreset.caption12,
     color: color.khakis,
+    fontFamily: font.regular,
+    fontSize: 14,
+    lineHeight: 21,
   },
-  tixRow: {
+  statusRow: {
     alignItems: "center",
     flexDirection: "row",
     gap: space.xs,
   },
-  tixLabel: {
+  statusLabel: {
     ...typePreset.label10Regular,
     color: color.khakis,
   },
   sponsored: {
     ...typePreset.label10Regular,
     color: color.beige300,
-  },
-  bookmark: {
-    alignItems: "center",
-    backgroundColor: color.darkChocolate,
-    borderRadius: BOOKMARK_SIZE / 2,
-    height: BOOKMARK_SIZE,
-    justifyContent: "center",
-    width: BOOKMARK_SIZE,
   },
 });

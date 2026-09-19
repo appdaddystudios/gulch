@@ -22,7 +22,7 @@ type SwipeStampsProps = {
   readonly progress: SharedValue<number>;
 };
 
-// FAVORITE / SKIP cues that fade in with the drag, laid over a DeckCard.
+// FAVORITE / SKIP cues that fade in with the drag, laid over the deck's EventCard.
 // Both stamps sit in the same centred spot; only one is ever visible because
 // the interpolations live on opposite sides of 0.
 export function SwipeStamps({ progress }: SwipeStampsProps) {
