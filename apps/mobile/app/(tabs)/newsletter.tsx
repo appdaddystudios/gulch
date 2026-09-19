@@ -19,7 +19,7 @@ import {
   type UseNewsletterFeedResult,
 } from "../../hooks/useNewsletterFeed";
 import {
-  NEWSLETTER_SUBSCRIBE_URL,
+  NEWSLETTER_BASE_URL,
   type NewsletterPost,
 } from "../../lib/newsletterFeed";
 import { openInBrowser } from "../../lib/openLink";
@@ -63,9 +63,9 @@ function Content({
     [router],
   );
 
-  const subscribe = useCallback(() => {
-    captureEvent("newsletter_subscribe_tapped", { context: "newsletter_list" });
-    void openInBrowser(NEWSLETTER_SUBSCRIBE_URL, "newsletter_list");
+  const openPublication = useCallback(() => {
+    captureEvent("newsletter_substack_tapped", { context: "newsletter_list" });
+    void openInBrowser(NEWSLETTER_BASE_URL, "newsletter_list");
   }, []);
 
   const renderItem = useCallback(
@@ -113,7 +113,7 @@ function Content({
       ListHeaderComponent={
         <NewsletterPublicationCard
           publication={feed.publication}
-          onSubscribe={subscribe}
+          onOpenPublication={openPublication}
         />
       }
       refreshControl={

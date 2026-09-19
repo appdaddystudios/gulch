@@ -45,6 +45,26 @@ describe("sanitizePreviewHtml", () => {
     );
   });
 
+  it("strips Substack's call-to-action button blocks", () => {
+    const html =
+      '<p>before</p><p class="button-wrapper" data-attrs="{&quot;url&quot;:&quot;https://gulchmag.substack.com/subscribe&quot;}" data-component-name="ButtonCreateButton">' +
+      '<a class="button primary" href="https://gulchmag.substack.com/subscribe"><span>Support Our Community</span></a></p>' +
+      '<p><a href="https://example.com/tickets">Get tickets</a></p>';
+
+    expect(sanitizePreviewHtml(html)).toBe(
+      '<p>before</p><p><a href="https://example.com/tickets">Get tickets</a></p>',
+    );
+  });
+
+  it("strips the trailing Read more teaser but not an inline one", () => {
+    const teaser =
+      '<p>last</p>\n      <p>\n          <a href="https://gulchmag.substack.com/p/issue-1">\n              Read more\n          </a>\n      </p>\n   ';
+    expect(sanitizePreviewHtml(teaser)).toBe("<p>last</p>\n      ");
+
+    const inline = '<p><a href="https://x">Read more</a></p><p>after</p>';
+    expect(sanitizePreviewHtml(inline)).toBe(inline);
+  });
+
   it("drops inline event handlers and javascript: URLs", () => {
     const html =
       "<a href=\"javascript:alert(1)\" onclick='go()'>x</a><img src=javascript:bad onerror=\"x()\" onLoad=\"y()\"><a href='javascript:z'>y</a>";
@@ -54,7 +74,7 @@ describe("sanitizePreviewHtml", () => {
 
   it("keeps paragraphs, images, figures, and links", () => {
     const html =
-      '<figure><img src="https://cdn/x.jpg" alt=""><figcaption>c</figcaption></figure><p><a href="https://gulchmag.substack.com/p/x">Read more</a></p>';
+      '<figure><img src="https://cdn/x.jpg" alt=""><figcaption>c</figcaption></figure><p><a href="https://gulchmag.substack.com/p/x">Full interview</a></p>';
 
     expect(sanitizePreviewHtml(html)).toBe(html);
   });

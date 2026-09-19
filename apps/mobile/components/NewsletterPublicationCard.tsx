@@ -14,14 +14,14 @@ const LOGO_SIZE = 56;
 
 type NewsletterPublicationCardProps = {
   readonly publication: NewsletterPublication;
-  readonly onSubscribe: () => void;
+  readonly onOpenPublication: () => void;
 };
 
-// Masthead above the issue list: logo, blurb, and the always-available
-// Subscribe call to action (posts are paywalled; the feed carries previews).
+// Masthead above the issue list: logo, blurb, and a link to the publication's
+// website in the browser. No purchase language: the app sells nothing.
 export function NewsletterPublicationCard({
   publication,
-  onSubscribe,
+  onOpenPublication,
 }: NewsletterPublicationCardProps) {
   return (
     <View style={styles.card}>
@@ -40,7 +40,7 @@ export function NewsletterPublicationCard({
           ) : null}
         </View>
       </View>
-      <Button label="Subscribe" tone="primary" onPress={onSubscribe} />
+      <Button label="Read on Substack" tone="primary" onPress={onOpenPublication} />
     </View>
   );
 }
