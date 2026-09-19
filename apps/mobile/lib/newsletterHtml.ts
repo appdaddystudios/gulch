@@ -24,6 +24,22 @@ const STRAY_TAG_PATTERN = new RegExp(
   `<\\/?(?:${STRIPPED_ELEMENTS.join("|")})\\b[^>]*>`,
   "gi",
 );
+// Substack's call-to-action button blocks (`<p class="button-wrapper"><a
+// class="button …"><span>Label</span></a></p>`, nearly all pointing at
+// /subscribe) and the "Read more" teaser it appends to a truncated post
+// (`<p>\n <a href="…/p/slug">\n Read more\n </a>\n </p>` as the final
+// paragraph, linking to the post itself). Neither belongs in the app: it
+// renders prose and images only. The teaser match requires a link into the
+// publication's post path so an editor's own closing "Read more" link to
+// anywhere else survives.
+const CTA_BLOCK_PATTERN =
+  /<p\b[^>]*\bclass\s*=\s*"[^"]*\bbutton-wrapper\b[^"]*"[^>]*>[\s\S]*?<\/p>/gi;
+const escapeRegExp = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const READ_MORE_TAIL_PATTERN = new RegExp(
+  `<p>\\s*<a\\b[^>]*\\bhref\\s*=\\s*"${escapeRegExp(NEWSLETTER_BASE_URL)}p/[^"]*"[^>]*>\\s*Read more\\s*<\\/a>\\s*<\\/p>\\s*$`,
+  "i",
+);
 const EVENT_HANDLER_ATTR = /\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
 const SCRIPT_URL_ATTR =
   /\s+(?:href|src)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi;
@@ -39,6 +55,8 @@ const HTML_ESCAPES: Readonly<Record<string, string>> = {
 export const sanitizePreviewHtml = (html: string): string =>
   ELEMENT_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, ""), html)
     .replace(STRAY_TAG_PATTERN, "")
+    .replace(CTA_BLOCK_PATTERN, "")
+    .replace(READ_MORE_TAIL_PATTERN, "")
     .replace(EVENT_HANDLER_ATTR, "")
     .replace(SCRIPT_URL_ATTR, "")
     // Mixed content: every image request must be https (also covers srcset).
@@ -47,8 +65,8 @@ export const sanitizePreviewHtml = (html: string): string =>
 const escapeHtml = (text: string): string =>
   text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
 
-// Bottom padding keeps the last line (Substack's "Read more" link) above the
-// native sticky Subscribe footer.
+// Bottom padding keeps the last line of the preview above the native sticky
+// footer.
 const DOCUMENT_CSS = `
 :root { color-scheme: dark; }
 body {

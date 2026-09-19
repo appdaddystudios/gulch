@@ -133,10 +133,9 @@ function PostView({ post }: { readonly post: NewsletterPost }) {
     documentClaimedRef.current = true;
   }, []);
 
-  // The post URL (not /subscribe) so the browser lands on this issue's
-  // paywall, where Substack runs its own subscribe flow.
-  const subscribe = () => {
-    captureEvent("newsletter_subscribe_tapped", { context: "newsletter_post" });
+  // The issue's own page on the publication's website, in the browser.
+  const openIssue = () => {
+    captureEvent("newsletter_substack_tapped", { context: "newsletter_post" });
     void openInBrowser(post.link, "newsletter_post");
   };
 
@@ -159,8 +158,8 @@ function PostView({ post }: { readonly post: NewsletterPost }) {
           { paddingBottom: Math.max(insets.bottom, space.md) },
         ]}
       >
-        <Text style={styles.footerText}>Subscribe to read the full issue</Text>
-        <Button label="Subscribe" tone="primary" onPress={subscribe} />
+        <Text style={styles.footerText}>This preview continues on Substack</Text>
+        <Button label="Read the full issue" tone="primary" onPress={openIssue} />
       </View>
     </View>
   );

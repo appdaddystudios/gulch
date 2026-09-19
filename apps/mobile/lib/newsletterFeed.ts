@@ -26,8 +26,6 @@ export type NewsletterFeed = {
 
 export const NEWSLETTER_BASE_URL = "https://gulchmag.substack.com/";
 export const NEWSLETTER_FEED_URL = "https://gulchmag.substack.com/feed";
-export const NEWSLETTER_SUBSCRIBE_URL =
-  "https://gulchmag.substack.com/subscribe";
 export const NEWSLETTER_FEED_TTL_MS = 15 * 60 * 1000;
 
 export class NewsletterFeedError extends Error {

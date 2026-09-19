@@ -30,7 +30,7 @@
 | `map_pin_tapped` | `venue_id`, `venue_name`, `event_count` | Venue pin select (not deselect) |
 | `newsletter_viewed` | — | Newsletter tab mount |
 | `newsletter_post_opened` | `slug` (public Substack post slug, e.g. `gulch-mag-036-julian-del-sur`) | Newsletter tab issue card tap → `app/newsletter/[slug].tsx` |
-| `newsletter_subscribe_tapped` | `context` (`newsletter_list` — masthead Subscribe button \| `newsletter_post` — sticky footer on an issue) | Newsletter surfaces; the tap also emits `link_opened` with `target: browser` |
+| `newsletter_substack_tapped` | `context` (`newsletter_list` — masthead "Read on Substack" button \| `newsletter_post` — sticky "Read the full issue" footer on an issue) | Newsletter surfaces; opens the publication's website in the browser; the tap also emits `link_opened` with `target: browser`. (Was `newsletter_subscribe_tapped` in build 11.) |
 | `calendar_view_toggled` | `mode` (`month` \| `week` \| `list`; `calendar` in pre-V3 data) | Calendar segmented control, only on actual change |
 | `survey_banner_tapped` | — | Home research banner button (also emits `link_opened`) |
 | `video_played` | `event_id` | Event details "Watch video" tap (Instagram embed player) |
