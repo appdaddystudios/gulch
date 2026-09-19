@@ -47,11 +47,12 @@ describe("eventHeroHeight / eventCardHeight", () => {
     expect(EVENT_CARD_PANEL_HEIGHT).toBe(158);
   });
 
-  it("grows the text rows with the system font scale, never shrinks them", () => {
-    // 94pt of text at 1.5× → 141; the pill, paddings, and gaps stay fixed.
-    expect(eventCardPanelHeight(1.5)).toBe(64 + 141);
+  it("grows every text row with the system font scale, never shrinks them", () => {
+    // 114pt of text rows (pill 20 + name 48 + meta 21 + status 25) at 1.5×
+    // → 171; the 44pt of paddings and gaps stay fixed.
+    expect(eventCardPanelHeight(1.5)).toBe(44 + 171);
     expect(eventCardPanelHeight(0.85)).toBe(EVENT_CARD_PANEL_HEIGHT);
-    expect(eventCardHeight(370, 1.5) - eventCardHeight(370)).toBe(141 - 94);
+    expect(eventCardHeight(370, 1.5) - eventCardHeight(370)).toBe(171 - 114);
   });
 });
 

@@ -10,17 +10,19 @@ export const EVENT_CARD_BORDER = 2;
 
 // Panel at its tallest: padding 16×2 + time pill 20 + name 2×24 + meta 21 +
 // status row 25 (small Badge: 4+1 vertical padding/border each side around a
-// 15pt label) + three 4pt gaps. The text rows scale with the system font
-// size (React Native scales Text by the window's fontScale); the pill is a
-// fixed 20pt box and the paddings/gaps are fixed too.
+// 15pt label) + three 4pt gaps. Every text-bearing row — the pill included,
+// which is a minimum height that grows with its label — scales with the
+// system font size (React Native scales Text by the window's fontScale);
+// only the paddings and gaps are fixed.
 const PANEL_PADDING = 16;
 const PANEL_GAP = 4;
-const PILL_HEIGHT = 20;
+export const EVENT_CARD_PILL_MIN_HEIGHT = 20;
 const NAME_HEIGHT = 2 * 24;
 const META_HEIGHT = 21;
 const STATUS_HEIGHT = 25;
-const PANEL_FIXED = 2 * PANEL_PADDING + PILL_HEIGHT + 3 * PANEL_GAP;
-const PANEL_TEXT = NAME_HEIGHT + META_HEIGHT + STATUS_HEIGHT;
+const PANEL_FIXED = 2 * PANEL_PADDING + 3 * PANEL_GAP;
+const PANEL_TEXT =
+  EVENT_CARD_PILL_MIN_HEIGHT + NAME_HEIGHT + META_HEIGHT + STATUS_HEIGHT;
 export const eventCardPanelHeight = (fontScale = 1): number =>
   PANEL_FIXED + Math.ceil(PANEL_TEXT * Math.max(fontScale, 1));
 export const EVENT_CARD_PANEL_HEIGHT = eventCardPanelHeight();

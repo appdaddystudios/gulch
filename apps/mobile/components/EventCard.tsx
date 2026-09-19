@@ -5,6 +5,7 @@ import { Badge } from "./Badge";
 import { GulchLogo, HeartIcon, MailIcon } from "./icons";
 import {
   EVENT_CARD_BORDER,
+  EVENT_CARD_PILL_MIN_HEIGHT,
   EVENT_HERO_ASPECT,
   eventCardLabel,
   eventMetaLabel,
@@ -185,9 +186,11 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: color.darkChocolate,
     borderRadius: radius.pill,
-    height: 20,
     justifyContent: "center",
+    // Grows with the label under larger system text.
+    minHeight: EVENT_CARD_PILL_MIN_HEIGHT,
     paddingHorizontal: space.md,
+    paddingVertical: space.xxs,
   },
   timeLabel: {
     ...typePreset.label10Medium,

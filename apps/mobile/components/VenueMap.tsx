@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -44,6 +45,8 @@ const DEFAULT_ZOOM = 11;
 const PIN_SIZE = 36;
 // A card counts as "current" once this much of it is on screen.
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 60 };
+// The venue sheet never covers more than this share of the window.
+const SHEET_MAX_RATIO = 0.62;
 
 // The live venue map behind the Map tab (pins, venue sheet, save + open).
 // Renders full-bleed: the map runs under the status bar, so only the non-map
@@ -256,7 +259,7 @@ function VenueCards({
   readonly onToggleSave: (id: string) => void;
   readonly onOpenEvent: (id: string) => void;
 }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const count = venue.events.length;
   const hasMore = count > 1;
   // Narrower than the window when there are several events so the next card
@@ -276,7 +279,9 @@ function VenueCards({
   ).current;
 
   return (
-    <View style={styles.venueSheet}>
+    // Capped so a tall card (large system text, small screen) can never push
+    // the sheet's top off screen; past the cap the sheet scrolls vertically.
+    <View style={[styles.venueSheet, { maxHeight: height * SHEET_MAX_RATIO }]}>
       {/* Name may truncate; the counter sits beside it and never shrinks, so
           a long venue name or large text can't hide the position. */}
       <View style={styles.venueTitleRow}>
@@ -298,32 +303,34 @@ function VenueCards({
           </Text>
         ) : null}
       </View>
-      <FlatList
-        horizontal
-        data={venue.events}
-        keyExtractor={(event) => event.id}
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={cardWidth + space.md}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        contentContainerStyle={[
-          styles.venueCardsRow,
-          // Trailing room so the last card can still snap to the start edge.
-          hasMore ? { paddingRight: SHEET_PEEK } : null,
-        ]}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={VIEWABILITY_CONFIG}
-        renderItem={({ item }) => (
-          <View style={[styles.venueCard, { width: cardWidth }]}>
-            <EventCard
-              event={item}
-              onPress={() => onOpenEvent(item.id)}
-              saved={isSaved(item.id)}
-              onToggleSave={() => onToggleSave(item.id)}
-            />
-          </View>
-        )}
-      />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <FlatList
+          horizontal
+          data={venue.events}
+          keyExtractor={(event) => event.id}
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={cardWidth + space.md}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          contentContainerStyle={[
+            styles.venueCardsRow,
+            // Trailing room so the last card can still snap to the start edge.
+            hasMore ? { paddingRight: SHEET_PEEK } : null,
+          ]}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={VIEWABILITY_CONFIG}
+          renderItem={({ item }) => (
+            <View style={[styles.venueCard, { width: cardWidth }]}>
+              <EventCard
+                event={item}
+                onPress={() => onOpenEvent(item.id)}
+                saved={isSaved(item.id)}
+                onToggleSave={() => onToggleSave(item.id)}
+              />
+            </View>
+          )}
+        />
+      </ScrollView>
     </View>
   );
 }
