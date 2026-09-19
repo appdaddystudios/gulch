@@ -60,11 +60,13 @@ describe("eventStatusLabel", () => {
   it("picks one status in precedence order", () => {
     expect(eventStatusLabel(event())).toBeNull();
     expect(eventStatusLabel(event({ sponsored: true }))).toBe("Sponsored");
-    expect(eventStatusLabel(event({ sponsored: true, ticketsRequired: true }))).toBe(
-      "RSVP Required",
-    );
     expect(
-      eventStatusLabel(event({ sponsored: true, ticketsRequired: true, editorsPick: true })),
+      eventStatusLabel(event({ sponsored: true, ticketsRequired: true })),
+    ).toBe("RSVP Required");
+    expect(
+      eventStatusLabel(
+        event({ sponsored: true, ticketsRequired: true, editorsPick: true }),
+      ),
     ).toBe("Editor's Pick");
   });
 });
@@ -75,14 +77,26 @@ describe("eventMetaLabel", () => {
     expect(eventMetaLabel(event())).toBe("Whitespace Gallery");
     expect(eventMetaLabel(event({ locationName: null }))).toBeNull();
   });
+
+  it("always reads the venue in venue mode", () => {
+    expect(eventMetaLabel(event({ organizerName: "GULCH" }), "venue")).toBe(
+      "Whitespace Gallery",
+    );
+    expect(
+      eventMetaLabel(
+        event({ organizerName: "GULCH", locationName: null }),
+        "venue",
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("eventTimeLabel", () => {
   it("formats the compact start/end and honours a custom description", () => {
     expect(eventTimeLabel(event())).toMatch(/Sat Sep 19/);
-    expect(eventTimeLabel(event({ customTimeDescription: "Doors at 6" }))).toContain(
-      "Doors at 6",
-    );
+    expect(
+      eventTimeLabel(event({ customTimeDescription: "Doors at 6" })),
+    ).toContain("Doors at 6");
   });
 });
 
@@ -95,8 +109,18 @@ describe("eventCardLabel", () => {
     );
   });
 
+  it("follows the meta mode", () => {
+    expect(eventCardLabel(event({ organizerName: "GULCH" }), "venue")).toMatch(
+      /^Opening Night, Whitespace Gallery, /,
+    );
+  });
+
   it("announces the visible status last", () => {
-    expect(eventCardLabel(event({ ticketsRequired: true }))).toMatch(/, RSVP Required$/);
-    expect(eventCardLabel(event({ editorsPick: true }))).toMatch(/, Editor's Pick$/);
+    expect(eventCardLabel(event({ ticketsRequired: true }))).toMatch(
+      /, RSVP Required$/,
+    );
+    expect(eventCardLabel(event({ editorsPick: true }))).toMatch(
+      /, Editor's Pick$/,
+    );
   });
 });

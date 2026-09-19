@@ -45,10 +45,19 @@ export const eventTimeLabel = (event: EventListItem): string =>
     customTimeDescription: event.customTimeDescription,
   });
 
-// Second line of every card: the organizer when present, else the venue —
-// most events carry no explicit organizer, so the location reads instead.
-export const eventMetaLabel = (event: EventListItem): string | null =>
-  event.organizerName ?? event.locationName;
+// Second line of a card. "organizer" (the default): the organizer when
+// present, else the venue — most events carry no explicit organizer, so the
+// location reads instead. "venue": always the venue, for the Map, where the
+// card stands in for the pin's place.
+export type EventMetaMode = "organizer" | "venue";
+
+export const eventMetaLabel = (
+  event: EventListItem,
+  mode: EventMetaMode = "organizer",
+): string | null =>
+  mode === "venue"
+    ? event.locationName
+    : (event.organizerName ?? event.locationName);
 
 export type EventStatus = "Editor's Pick" | "RSVP Required" | "Sponsored";
 
@@ -66,10 +75,13 @@ export const eventStatusLabel = (event: EventListItem): EventStatus | null =>
 // "<name>, <meta>, <time>, <status>" for VoiceOver — one utterance per card
 // carrying everything the card shows; the deck container announces its top
 // card with the same text.
-export const eventCardLabel = (event: EventListItem): string =>
+export const eventCardLabel = (
+  event: EventListItem,
+  mode: EventMetaMode = "organizer",
+): string =>
   [
     event.name,
-    eventMetaLabel(event),
+    eventMetaLabel(event, mode),
     eventTimeLabel(event),
     eventStatusLabel(event),
   ]

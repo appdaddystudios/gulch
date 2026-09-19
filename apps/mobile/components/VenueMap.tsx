@@ -1,7 +1,7 @@
 import Mapbox from "@rnmapbox/maps";
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -12,7 +12,6 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import type { ViewToken } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "./Button";
@@ -24,12 +23,7 @@ import { useDbClient, useQuery, type QueryState } from "../hooks/useQuery";
 import { useSaveToast } from "../hooks/useSaveToast";
 import { listMapVenues, type MapVenue } from "../lib/mapEvents";
 import { captureEvent } from "../lib/telemetry";
-import {
-  SHEET_PEEK,
-  venueCardWidth,
-  venueSheetA11yLabel,
-  venueSheetCounter,
-} from "../lib/venueSheet";
+import { SHEET_PEEK, venueCardWidth } from "../lib/venueSheet";
 import { color, space, type as typePreset } from "../theme";
 
 // Expo inlines only static dot-notation env reads.
@@ -44,8 +38,7 @@ const ATLANTA_CENTER: readonly [number, number] = [-84.388, 33.758];
 const DEFAULT_ZOOM = 11;
 const PIN_SIZE = 36;
 // A card counts as "current" once this much of it is on screen.
-const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 60 };
-// The venue sheet never covers more than this share of the window.
+// The floating venue cards never cover more than this share of the window.
 const SHEET_MAX_RATIO = 0.62;
 
 // The live venue map behind the Map tab (pins, venue sheet, save + open).
@@ -184,8 +177,8 @@ function Content({
       ) : null}
 
       {selectedVenue ? (
-        // Keyed by venue so the sheet's scroll position and counter restart
-        // when a different pin is chosen.
+        // Keyed by venue so the row's scroll position restarts when a
+        // different pin is chosen.
         <VenueCards
           key={selectedVenue.id}
           venue={selectedVenue}
@@ -265,44 +258,16 @@ function VenueCards({
   // Narrower than the window when there are several events so the next card
   // peeks in from the right — the cue that the row scrolls.
   const cardWidth = venueCardWidth(width, space.xl, count);
-  const [index, setIndex] = useState(0);
-  const counter = venueSheetCounter(index, count);
-  // FlatList requires this callback's identity to stay fixed for the list's
-  // lifetime, hence the ref rather than an inline function.
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { readonly viewableItems: readonly ViewToken[] }) => {
-      const first = viewableItems[0]?.index;
-      if (typeof first === "number") {
-        setIndex(first);
-      }
-    },
-  ).current;
 
   return (
-    // Capped so a tall card (large system text, small screen) can never push
-    // the sheet's top off screen; past the cap the sheet scrolls vertically.
-    <View style={[styles.venueSheet, { maxHeight: height * SHEET_MAX_RATIO }]}>
-      {/* Name may truncate; the counter sits beside it and never shrinks, so
-          a long venue name or large text can't hide the position. */}
-      <View style={styles.venueTitleRow}>
-        <Text
-          accessibilityLabel={venueSheetA11yLabel(venue.name, index, count)}
-          accessibilityRole="header"
-          style={styles.venueName}
-          numberOfLines={1}
-        >
-          {venue.name}
-        </Text>
-        {counter ? (
-          <Text
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            style={styles.venueCounter}
-          >
-            {counter}
-          </Text>
-        ) : null}
-      </View>
+    // Cards float over the map with no sheet of their own: the map stays
+    // live around them and a tap on it dismisses them. Capped so a tall card
+    // (large system text, small screen) can never run off the top; past the
+    // cap the card area scrolls vertically.
+    <View
+      pointerEvents="box-none"
+      style={[styles.venueCards, { maxHeight: height * SHEET_MAX_RATIO }]}
+    >
       <ScrollView showsVerticalScrollIndicator={false}>
         <FlatList
           horizontal
@@ -317,12 +282,14 @@ function VenueCards({
             // Trailing room so the last card can still snap to the start edge.
             hasMore ? { paddingRight: SHEET_PEEK } : null,
           ]}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={VIEWABILITY_CONFIG}
           renderItem={({ item }) => (
-            <View style={[styles.venueCard, { width: cardWidth }]}>
+            // Cells stretch to the row's tallest card; `fill` lets a shorter
+            // card grow its hero instead of leaving empty surface.
+            <View style={{ width: cardWidth }}>
               <EventCard
                 event={item}
+                fill
+                metaMode="venue"
                 onPress={() => onOpenEvent(item.id)}
                 saved={isSaved(item.id)}
                 onToggleSave={() => onToggleSave(item.id)}
@@ -379,15 +346,10 @@ const styles = StyleSheet.create({
     ...typePreset.captionBold12,
     color: color.oreo,
   },
-  venueSheet: {
-    backgroundColor: color.darkChocolate,
-    borderColor: color.oreo,
-    borderTopWidth: 2,
+  venueCards: {
     bottom: 0,
-    gap: space.md,
     left: 0,
     paddingBottom: space.xl,
-    paddingTop: space.lg,
     position: "absolute",
     right: 0,
   },
@@ -396,28 +358,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
   },
-  venueTitleRow: {
-    alignItems: "baseline",
-    flexDirection: "row",
-    gap: space.sm,
-    paddingHorizontal: space.xl,
-  },
-  venueName: {
-    ...typePreset.bodyBold14,
-    color: color.white,
-    flexShrink: 1,
-  },
-  venueCounter: {
-    ...typePreset.caption12,
-    color: color.khakis,
-    flexShrink: 0,
-  },
   venueCardsRow: {
+    alignItems: "stretch",
     gap: space.md,
     // Room for the card's 4pt hard shadow.
     paddingBottom: space.xs,
     paddingHorizontal: space.xl,
   },
-  // The EventCard carries its own chrome; this only fixes the page width.
-  venueCard: {},
 });

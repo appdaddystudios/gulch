@@ -11,6 +11,7 @@ import {
   eventMetaLabel,
   eventStatusLabel,
   eventTimeLabel,
+  type EventMetaMode,
 } from "../lib/eventCard";
 import type { EventListItem } from "../lib/events";
 import {
@@ -30,10 +31,15 @@ type EventCardProps = {
   readonly event: EventListItem;
   readonly onPress?: () => void;
   readonly saved?: boolean;
+  // The heart renders only when a toggle is given; the deck passes none
+  // because swiping right is the save gesture there.
   readonly onToggleSave?: () => void;
-  // Deck face: the card fills the slot the engine gives it and shows no
-  // heart, since swiping right is the save gesture there.
+  // Fixed-height contexts (the deck slot, a stretched map row): the panel
+  // keeps its natural height at the bottom and the hero absorbs the rest, so
+  // a card with less text never shows empty surface under its lines.
   readonly fill?: boolean;
+  // Second line: organizer-first (default) or always the venue (Map).
+  readonly metaMode?: EventMetaMode;
 };
 
 // The one event card: NewsletterPostCard chrome (brown surface, 2px border,
@@ -45,18 +51,19 @@ export function EventCard({
   saved = false,
   onToggleSave,
   fill = false,
+  metaMode = "organizer",
 }: EventCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   // Any stored image renders — a transient pipeline status ("pending"/"failed"
   // after a re-mark) must not hide a previously good rehosted image.
   const hasImage = Boolean(event.imageUrl) && !imageFailed;
   const timeLabel = eventTimeLabel(event);
-  const metaLabel = eventMetaLabel(event);
+  const metaLabel = eventMetaLabel(event, metaMode);
   const status = eventStatusLabel(event);
 
   return (
     <Pressable
-      accessibilityLabel={eventCardLabel(event)}
+      accessibilityLabel={eventCardLabel(event, metaMode)}
       accessibilityRole={onPress ? "button" : undefined}
       disabled={!onPress}
       onPress={onPress}
@@ -66,7 +73,7 @@ export function EventCard({
         pressed && onPress ? styles.pressed : null,
       ]}
     >
-      <View style={styles.hero}>
+      <View style={fill ? styles.heroFill : styles.heroFixed}>
         {hasImage ? (
           <Image
             accessibilityIgnoresInvertColors
@@ -80,12 +87,11 @@ export function EventCard({
             <GulchLogo width={120} height={15} />
           </View>
         )}
-        {fill ? null : (
+        {onToggleSave ? (
           <Pressable
             accessibilityLabel={saved ? "Remove from saved" : "Save event"}
             accessibilityRole="button"
             accessibilityState={{ selected: saved }}
-            disabled={!onToggleSave}
             hitSlop={6}
             onPress={onToggleSave}
             style={styles.heart}
@@ -96,10 +102,10 @@ export function EventCard({
               filled={saved}
             />
           </Pressable>
-        )}
+        ) : null}
       </View>
 
-      <View style={[styles.panel, fill ? styles.fill : null]}>
+      <View style={styles.panel}>
         {timeLabel ? (
           <View style={styles.timePill}>
             <Text style={styles.timeLabel} numberOfLines={1}>
@@ -147,11 +153,19 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.85,
   },
-  hero: {
+  heroFixed: {
     aspectRatio: EVENT_HERO_ASPECT,
     backgroundColor: color.oreo,
     borderTopLeftRadius: HERO_RADIUS,
     borderTopRightRadius: HERO_RADIUS,
+    overflow: "hidden",
+    width: "100%",
+  },
+  heroFill: {
+    backgroundColor: color.oreo,
+    borderTopLeftRadius: HERO_RADIUS,
+    borderTopRightRadius: HERO_RADIUS,
+    flex: 1,
     overflow: "hidden",
     width: "100%",
   },
