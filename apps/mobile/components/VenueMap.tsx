@@ -21,6 +21,7 @@ import { MapIcon } from "./icons";
 import { Toast } from "./Toast";
 import { useDbClient, useQuery, type QueryState } from "../hooks/useQuery";
 import { useSaveToast } from "../hooks/useSaveToast";
+import { eventCardHeight } from "../lib/eventCard";
 import { listMapVenues, type MapVenue } from "../lib/mapEvents";
 import { captureEvent } from "../lib/telemetry";
 import { SHEET_PEEK, venueCardWidth } from "../lib/venueSheet";
@@ -252,12 +253,16 @@ function VenueCards({
   readonly onToggleSave: (id: string) => void;
   readonly onOpenEvent: (id: string) => void;
 }) {
-  const { width, height } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const count = venue.events.length;
   const hasMore = count > 1;
   // Narrower than the window when there are several events so the next card
   // peeks in from the right — the cue that the row scrolls.
   const cardWidth = venueCardWidth(width, space.xl, count);
+  // One explicit height for every card of the venue (same rule as the Home
+  // deck): a `fill` card has no intrinsic hero height, so the row cannot be
+  // left to size itself from its cells.
+  const cardHeight = eventCardHeight(cardWidth, fontScale);
 
   return (
     // Cards float over the map with no sheet of their own: the map stays
@@ -283,9 +288,9 @@ function VenueCards({
             hasMore ? { paddingRight: SHEET_PEEK } : null,
           ]}
           renderItem={({ item }) => (
-            // Cells stretch to the row's tallest card; `fill` lets a shorter
-            // card grow its hero instead of leaving empty surface.
-            <View style={{ width: cardWidth }}>
+            // Every cell gets the same fixed height; `fill` lets a card with
+            // less text grow its hero instead of leaving empty surface.
+            <View style={{ height: cardHeight, width: cardWidth }}>
               <EventCard
                 event={item}
                 fill
@@ -359,7 +364,6 @@ const styles = StyleSheet.create({
     right: 0,
   },
   venueCardsRow: {
-    alignItems: "stretch",
     gap: space.md,
     // Room for the card's 4pt hard shadow.
     paddingBottom: space.xs,
