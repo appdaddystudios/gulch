@@ -94,7 +94,7 @@ Deno.test("changed() treats PostgREST +00:00 and Webflow Z as the same instant",
 Deno.test("planPresence hides absent rows, revives present ones, and leaves rows without the flag alone when live", () => {
   const existing = [existingEvent("keep"), existingEvent("gone"), existingEvent("back", false), existingEvent("legacy", undefined)];
   const plan = planPresence(existing, new Set(["keep", "back", "legacy"]));
-  assertEquals(plan, { toHide: ["gone"], toRevive: ["back"], skipped: false });
+  assertEquals(plan, { toHide: ["gone"], toRevive: ["back"], deferred: 0, skipped: false });
 });
 
 Deno.test("planPresence skips everything on an empty live set", () => {
@@ -104,16 +104,17 @@ Deno.test("planPresence skips everything on an empty live set", () => {
   assertEquals(plan.toRevive, []);
 });
 
-Deno.test("planPresence refuses to hide more than the guard but still revives", () => {
-  const existing = [
-    ...Array.from({ length: PRESENCE_GUARD_MIN + 1 }, (_, i) => existingEvent(`gone-${i}`)),
-    existingEvent("back", false)
-  ];
-  const plan = planPresence(existing, new Set(["back", "unrelated-live"]));
-  assertEquals(plan.skipped, true);
-  assertEquals(plan.toHide, []);
+// A bad snapshot can only hide one guarded batch, and revives are unguarded
+// so the next good run undoes it. A legitimately large hide set converges
+// over runs instead of being skipped forever.
+Deno.test("planPresence hides at most the guard per run, defers the rest, and still revives", () => {
+  const gone = Array.from({ length: PRESENCE_GUARD_MIN + 1 }, (_, i) => existingEvent(`gone-${i}`));
+  const plan = planPresence([...gone, existingEvent("back", false)], new Set(["back", "unrelated-live"]));
+
+  assertEquals(plan.skipped, false);
+  assertEquals(plan.toHide, gone.slice(0, PRESENCE_GUARD_MIN).map((row) => row.webflow_item_id));
+  assertEquals(plan.deferred, 1);
   assertEquals(plan.toRevive, ["back"]);
-  assertEquals(plan.reason?.startsWith("hide count"), true);
 });
 
 // Hide and revive carry the run's observation time so a webhook received
@@ -137,7 +138,27 @@ Deno.test("refresh hides events missing from Webflow and revives republished one
     { ids: ["cancelled"], isLive: false, observedAt: NOW },
     { ids: ["republished"], isLive: true, observedAt: NOW }
   ]);
-  assertEquals(summary.presence, { hidden: 1, revived: 1, skipped: false });
+  assertEquals(summary.presence, { hidden: 1, revived: 1, deferred: 0, skipped: false });
+});
+
+Deno.test("refresh hides only the guarded batch per run and reports the deferred remainder", async () => {
+  const liveCalls: { ids: readonly string[]; isLive: boolean }[] = [];
+  const stale = Array.from({ length: PRESENCE_GUARD_MIN + 5 }, (_, i) => existingEvent(`stale-${i}`));
+  const handler = createRefreshHandler(refreshDeps({
+    loadExisting: async (table) => (table === "events" ? stale : []),
+    fetchItems: async (_token, collectionId) => (collectionId === EVENTS ? [eventItem("only-live")] : []),
+    setEventsLive: async (ids, isLive) => {
+      liveCalls.push({ ids, isLive });
+      return { updated: ids.length };
+    }
+  }));
+
+  const summary = await (await handler(refreshRequest())).json();
+
+  assertEquals(liveCalls.length, 1);
+  assertEquals(liveCalls[0]?.ids.length, PRESENCE_GUARD_MIN);
+  assertEquals(liveCalls[0]?.isLive, false);
+  assertEquals(summary.presence, { hidden: PRESENCE_GUARD_MIN, revived: 0, deferred: 5, skipped: false });
 });
 
 Deno.test("refresh takes its observation time once, before any Webflow fetch, and hands it to every event write", async () => {
@@ -224,7 +245,7 @@ Deno.test("refresh reports a skipped presence pass instead of blanking the app o
   const summary = await (await handler(refreshRequest())).json();
 
   assertEquals(liveCalls, []);
-  assertEquals(summary.presence, { hidden: 0, revived: 0, skipped: true, reason: "empty live set" });
+  assertEquals(summary.presence, { hidden: 0, revived: 0, deferred: 0, skipped: true, reason: "empty live set" });
 });
 
 Deno.test("runRefresh records a sync run start and a successful finish with the summary", async () => {

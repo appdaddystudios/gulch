@@ -74,6 +74,7 @@ export type RefreshDeps = {
 export type PresenceSummary = {
   hidden: number;
   revived: number;
+  deferred: number;
   skipped: boolean;
   reason?: string;
 };
@@ -228,7 +229,7 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
   summary.managingRefs = { updated: managingRefs.updated };
   summary.eventWrites ??= { inserted: 0, updated: 0, stale: 0, hiddenAfterInsert: 0 };
   summary.imagePending ??= { marked: 0 };
-  summary.presence ??= { hidden: 0, revived: 0, skipped: true, reason: "events not reconciled" };
+  summary.presence ??= { hidden: 0, revived: 0, deferred: 0, skipped: true, reason: "events not reconciled" };
   return summary;
 }
 
@@ -258,9 +259,10 @@ async function applyPresence(
   const hidden = plan.toHide.length > 0 ? await setLive(plan.toHide, false, observedAt) : { updated: 0 };
   const revived = plan.toRevive.length > 0 ? await setLive(plan.toRevive, true, observedAt) : { updated: 0 };
   if (plan.skipped) console.warn(`presence pass skipped: ${plan.reason}`);
+  if (plan.deferred > 0) console.warn(`presence pass deferred ${plan.deferred} hides to a later run`);
   return plan.skipped
-    ? { hidden: hidden.updated, revived: revived.updated, skipped: true, reason: plan.reason }
-    : { hidden: hidden.updated, revived: revived.updated, skipped: false };
+    ? { hidden: hidden.updated, revived: revived.updated, deferred: plan.deferred, skipped: true, reason: plan.reason }
+    : { hidden: hidden.updated, revived: revived.updated, deferred: plan.deferred, skipped: false };
 }
 
 export async function runRefresh(deps: RefreshDeps, source: RefreshSource): Promise<RefreshSummary> {

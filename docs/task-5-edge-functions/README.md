@@ -69,6 +69,8 @@ curl -s -X POST "https://basetbhtpifqbsqmgedv.supabase.co/functions/v1/refresh-t
   -H "Authorization: Bearer $GULCH_REFRESH_SECRET" | jq .presence
 ```
 
+The presence pass hides at most `max(25, 10% of stored events)` per run and reports the rest as `presence.deferred`. Rerun the manual refresh until `deferred` is `0`.
+
 Then confirm in `sync_runs` (`select * from public.sync_runs order by started_at desc limit 3`).
 
 ## 5. Verify

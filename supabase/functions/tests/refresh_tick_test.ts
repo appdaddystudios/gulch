@@ -138,7 +138,7 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
     locations: { scanned: 2, upserted: 1, geocoded: 1, failed: 0 },
     eventWrites: { inserted: 1, updated: 0, stale: 0, hiddenAfterInsert: 0 },
     imagePending: { marked: 0 },
-    presence: { hidden: 0, revived: 0, skipped: false },
+    presence: { hidden: 0, revived: 0, deferred: 0, skipped: false },
     events: { scanned: 2, upserted: 1, geocoded: 0, failed: 0 },
     shows: { scanned: 0, upserted: 0, geocoded: 0, failed: 0 },
     eventOrganizers: { derived: 2, replaced: 1, skipped: 1 },
