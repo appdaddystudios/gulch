@@ -53,6 +53,26 @@ describe("getSponsorableEvents", () => {
     ]);
   });
 
+  it("lists only live upcoming events, soonest first", async () => {
+    const calls: TableCall[] = [];
+    const client = makeClient({ events: { data: [], error: null } }, calls);
+
+    await getSponsorableEvents(client);
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "select",
+      "eq",
+      "gte",
+      "order",
+      "limit"
+    ]);
+    expect(calls[1]).toEqual({
+      table: "events",
+      method: "eq",
+      args: ["is_live", true]
+    });
+  });
+
   it("returns an empty list when data is null", async () => {
     const client = makeClient({ events: { data: null, error: null } });
     await expect(getSponsorableEvents(client)).resolves.toEqual([]);

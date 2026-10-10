@@ -7,14 +7,16 @@ export type SponsorableEvent = {
   readonly sponsored: boolean;
 };
 
-// Upcoming events only — sponsorship is sold against future dates, and a
-// bounded list keeps the card scannable.
+// Live upcoming events only — the admin client is service_role, so RLS does
+// not hide unpublished (cancelled) events for it; sponsorship is sold against
+// future dates; a bounded list keeps the card scannable.
 export const getSponsorableEvents = async (
   client: DbClient
 ): Promise<readonly SponsorableEvent[]> => {
   const { data, error } = await client
     .from("events")
     .select("webflow_item_id, name, start_at, sponsored")
+    .eq("is_live", true)
     .gte("start_at", new Date().toISOString())
     .order("start_at", { ascending: true })
     .limit(50);
