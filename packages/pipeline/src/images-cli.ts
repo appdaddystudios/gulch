@@ -24,18 +24,22 @@ type ImagesFilterBuilder = {
   };
 };
 
+type ImagesUpdateBuilder = {
+  readonly eq: (column: "webflow_item_id" | "external_link", value: string) => ImagesUpdateBuilder;
+  readonly is: (column: "external_link", value: null) => ImagesUpdateBuilder;
+  readonly select: (columns: "webflow_item_id") => PromiseLike<{
+    readonly data: readonly { readonly webflow_item_id: string }[] | null;
+    readonly error: null | { readonly message: string };
+  }>;
+};
+
 type SupabaseImagesClient = {
   readonly from: (table: "events") => {
     readonly select: (columns: "webflow_item_id,external_link,image_checksum,image_status,is_video") => {
       readonly in: (column: "image_status", values: readonly ["pending", "failed"]) => ImagesFilterBuilder;
       readonly not: (column: "webflow_item_id", operator: "is", value: null) => ImagesFilterBuilder;
     };
-    readonly update: (values: EventImageUpdate) => {
-      readonly eq: (
-        column: "webflow_item_id",
-        value: string
-      ) => PromiseLike<{ readonly error: null | { readonly message: string } }>;
-    };
+    readonly update: (values: EventImageUpdate) => ImagesUpdateBuilder;
   };
   readonly storage: {
     readonly from: (bucket: "event-images") => {
@@ -119,20 +123,29 @@ export function createImagesDbClient(supabase: SupabaseImagesClient): ImagesDbCl
         }
       }
     },
-    async updateEventImage(id, fields) {
-      const result = await supabase.from("events").update(fields).eq("webflow_item_id", id);
+    // Guarded by the link the image was fetched for, so a worker that
+    // started before a publish changed the link cannot overwrite the newer
+    // result. Resolves false when no row matched.
+    async updateEventImage(id, fields, expectedExternalLink) {
+      const base = supabase.from("events").update(fields).eq("webflow_item_id", id);
+      const guarded =
+        expectedExternalLink === null ? base.is("external_link", null) : base.eq("external_link", expectedExternalLink);
+      const result = await guarded.select("webflow_item_id");
 
       if (result.error) {
         throw new Error(`Failed to update event image ${id}: ${result.error.message}`);
       }
+
+      return (result.data?.length ?? 0) > 0;
     }
   };
 }
 
 export function createStorageClient(supabase: SupabaseImagesClient): StorageClient {
   return {
-    async uploadEventImage(eventId, bytes, contentType) {
-      const path = `events/${eventId}.jpg`;
+    // Content-addressed key: overlapping workers write distinct objects.
+    async uploadEventImage(eventId, bytes, contentType, checksum) {
+      const path = `events/${eventId}-${checksum.slice(0, 8)}.jpg`;
       const result = await supabase.storage.from("event-images").upload(path, bytes, {
         contentType,
         upsert: true

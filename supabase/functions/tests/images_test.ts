@@ -5,6 +5,7 @@ import {
   extractOgUrl,
   fetchHeroImage,
   fetchInstagramCover,
+  imageObjectPath,
   isInstagramPostUrl,
   isVideoCanonicalUrl,
   sha256Hex
@@ -99,40 +100,77 @@ Deno.test("fetchInstagramCover classifies non-post links, missing og:image, bad 
   assertEquals(postDown.status, "failed");
 });
 
-Deno.test("fetchHeroImage writes the same columns as the pipeline on success", async () => {
-  const updates: { eventId: string; fields: EventImageUpdate }[] = [];
-  const uploads: { eventId: string; contentType: string }[] = [];
+Deno.test("imageObjectPath is content-addressed so overlapping workers never clobber each other", () => {
+  assertEquals(imageObjectPath("event-1", "abcdef0123456789"), "events/event-1-abcdef01.jpg");
+});
+
+Deno.test("fetchHeroImage writes the same columns as the pipeline, guarded by the link it fetched for", async () => {
+  const updates: { eventId: string; fields: EventImageUpdate; expectedLink: string | null }[] = [];
+  const uploads: { eventId: string; contentType: string; checksum: string }[] = [];
 
   const outcome = await fetchHeroImage("event-1", POST_URL, {
     fetchCover: async () => ({ status: "ok", bytes: imageBytes, contentType: "image/jpeg", checksum: "abcdef0123456789", isVideo: false }),
-    upload: async (eventId, _bytes, contentType) => {
-      uploads.push({ eventId, contentType });
-      return "https://cdn.example/event-images/events/event-1.jpg";
+    upload: async (eventId, _bytes, contentType, checksum) => {
+      uploads.push({ eventId, contentType, checksum });
+      return `https://cdn.example/event-images/${imageObjectPath(eventId, checksum)}`;
     },
-    updateEventImage: async (eventId, fields) => {
-      updates.push({ eventId, fields });
+    updateEventImage: async (eventId, fields, expectedLink) => {
+      updates.push({ eventId, fields, expectedLink });
+      return true;
     },
     now: () => NOW
   });
 
   assertEquals(outcome, "ok");
-  assertEquals(uploads, [{ eventId: "event-1", contentType: "image/jpeg" }]);
+  assertEquals(uploads, [{ eventId: "event-1", contentType: "image/jpeg", checksum: "abcdef0123456789" }]);
   assertEquals(updates, [{
     eventId: "event-1",
     fields: {
-      image_url: "https://cdn.example/event-images/events/event-1.jpg?v=abcdef01",
+      image_url: "https://cdn.example/event-images/events/event-1-abcdef01.jpg?v=abcdef01",
       image_status: "ok",
       image_checksum: "abcdef0123456789",
       image_fetched_at: NOW,
       is_video: false
-    }
+    },
+    expectedLink: POST_URL
   }]);
+});
+
+// Two workers for one event (overlapping publishes, or webhook + images job)
+// may finish in either order; the one whose link is no longer current must
+// not win. The guarded update returns false, and the result is dropped.
+Deno.test("fetchHeroImage drops its result when the event's link changed while it was fetching", async () => {
+  const update = async () => false;
+  const upload = async () => "https://cdn.example/event-images/events/e-x.jpg";
+
+  assertEquals(
+    await fetchHeroImage("e", POST_URL, {
+      fetchCover: async () => ({ status: "ok", bytes: imageBytes, contentType: "image/jpeg", checksum: "x", isVideo: false }),
+      upload,
+      updateEventImage: update,
+      now: () => NOW
+    }),
+    "stale"
+  );
+  assertEquals(
+    await fetchHeroImage("e", null, { fetchCover: async () => ({ status: "unavailable" }), updateEventImage: update, now: () => NOW }),
+    "stale"
+  );
+  assertEquals(
+    await fetchHeroImage("e", POST_URL, {
+      fetchCover: async () => ({ status: "failed", reason: "blocked" }),
+      updateEventImage: update,
+      now: () => NOW
+    }),
+    "stale"
+  );
 });
 
 Deno.test("fetchHeroImage marks unavailable and failed, including when the upload throws", async () => {
   const updates: EventImageUpdate[] = [];
   const update = async (_id: string, fields: EventImageUpdate) => {
     updates.push(fields);
+    return true;
   };
 
   assertEquals(

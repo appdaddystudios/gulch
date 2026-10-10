@@ -121,19 +121,32 @@ export async function fetchInstagramCover(postUrl: string | null, deps: FetchCov
 export type HeroImageDeps = {
   fetcher?: FetchLike;
   fetchCover?: (postUrl: string | null) => Promise<CoverResult>;
-  upload?: (eventId: string, bytes: Uint8Array, contentType: string) => Promise<string>;
-  updateEventImage?: (eventId: string, fields: EventImageUpdate) => Promise<void>;
+  upload?: (eventId: string, bytes: Uint8Array, contentType: string, checksum: string) => Promise<string>;
+  updateEventImage?: (eventId: string, fields: EventImageUpdate, expectedExternalLink: string | null) => Promise<boolean>;
   now?: () => string;
 };
 
-export type HeroImageOutcome = "ok" | "unavailable" | "failed";
+// "stale": the event's external_link changed while this fetch ran; the
+// result was dropped and a newer worker owns the row.
+export type HeroImageOutcome = "ok" | "unavailable" | "failed" | "stale";
 
-async function defaultUpload(eventId: string, bytes: Uint8Array, contentType: string): Promise<string> {
+// Content-addressed so overlapping workers for one event write distinct
+// objects instead of clobbering a shared events/{id}.jpg.
+export function imageObjectPath(eventId: string, checksum: string): string {
+  return `events/${eventId}-${checksum.slice(0, 8)}.jpg`;
+}
+
+async function defaultUpload(eventId: string, bytes: Uint8Array, contentType: string, checksum: string): Promise<string> {
   const client = createServiceClient();
-  const path = `events/${eventId}.jpg`;
+  const path = imageObjectPath(eventId, checksum);
   const result = await client.storage.from(IMAGE_BUCKET).upload(path, bytes, { contentType, upsert: true });
   if (result.error) throw new Error(`Failed to upload event image ${eventId}: ${result.error.message}`);
   return client.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+function stale(eventId: string): "stale" {
+  console.warn(`Hero image for ${eventId} skipped: external_link changed while fetching`);
+  return "stale";
 }
 
 // One event, one attempt. The 6-hourly images job remains the retry path for
@@ -147,32 +160,34 @@ export async function fetchHeroImage(
   const fetchCover = deps.fetchCover ?? ((postUrl) => fetchInstagramCover(postUrl, { fetch: fetcher }));
   const upload = deps.upload ?? defaultUpload;
   const update = deps.updateEventImage ??
-    ((id: string, fields: EventImageUpdate) => updateEventImage(createServiceClient(), id, fields));
+    ((id: string, fields: EventImageUpdate, link: string | null) => updateEventImage(createServiceClient(), id, fields, link));
   const fetchedAt = (deps.now ?? (() => new Date().toISOString()))();
+  // Every write is guarded by the link this fetch was for.
+  const write = (fields: EventImageUpdate) => update(eventId, fields, externalLink);
 
   try {
     const result = await fetchCover(externalLink);
     if (result.status === "ok") {
-      const publicUrl = await upload(eventId, result.bytes, result.contentType);
-      await update(eventId, {
+      const publicUrl = await upload(eventId, result.bytes, result.contentType, result.checksum);
+      const applied = await write({
         image_url: `${publicUrl}?v=${result.checksum.slice(0, 8)}`,
         image_status: "ok",
         image_checksum: result.checksum,
         image_fetched_at: fetchedAt,
         is_video: result.isVideo
       });
-      return "ok";
+      return applied ? "ok" : stale(eventId);
     }
     if (result.status === "unavailable") {
-      await update(eventId, { image_url: null, image_status: "unavailable", image_fetched_at: fetchedAt });
-      return "unavailable";
+      const applied = await write({ image_url: null, image_status: "unavailable", image_fetched_at: fetchedAt });
+      return applied ? "unavailable" : stale(eventId);
     }
     console.error(`Hero image fetch failed for ${eventId}: ${result.reason}`);
-    await update(eventId, { image_status: "failed", image_fetched_at: fetchedAt });
-    return "failed";
+    const applied = await write({ image_status: "failed", image_fetched_at: fetchedAt });
+    return applied ? "failed" : stale(eventId);
   } catch (error) {
     console.error(`Hero image processing failed for ${eventId}: ${error instanceof Error ? error.message : String(error)}`);
-    await update(eventId, { image_status: "failed", image_fetched_at: fetchedAt });
-    return "failed";
+    const applied = await write({ image_status: "failed", image_fetched_at: fetchedAt });
+    return applied ? "failed" : stale(eventId);
   }
 }

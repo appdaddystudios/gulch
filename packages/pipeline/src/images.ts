@@ -19,11 +19,14 @@ export type EventImageUpdate = {
 
 export type ImagesDbClient = {
   readonly selectPendingEvents: (refresh?: boolean) => Promise<readonly ImagesEvent[]>;
-  readonly updateEventImage: (id: string, fields: EventImageUpdate) => Promise<void>;
+  // Guarded by the link the image was fetched for; resolves false when the
+  // event's external_link changed meanwhile and the write was skipped.
+  readonly updateEventImage: (id: string, fields: EventImageUpdate, expectedExternalLink: string | null) => Promise<boolean>;
 };
 
 export type StorageClient = {
-  readonly uploadEventImage: (eventId: string, bytes: Uint8Array, contentType: string) => Promise<string>;
+  // The checksum keys the object so overlapping workers never clobber each other.
+  readonly uploadEventImage: (eventId: string, bytes: Uint8Array, contentType: string, checksum: string) => Promise<string>;
 };
 
 export type ImagesSummary = {
@@ -96,6 +99,14 @@ async function processEvent(
   summary: MutableImagesSummary
 ): Promise<void> {
   const fetchedAt = options.now().toISOString();
+  // Every write is guarded by the link this fetch was for. A false result
+  // means a publish changed the link mid-run and a newer worker owns the row.
+  const write = (fields: EventImageUpdate): Promise<boolean> =>
+    options.db.updateEventImage(event.webflow_item_id, fields, event.external_link);
+  const stale = (): void => {
+    options.logger?.info(`Image for ${event.webflow_item_id} skipped: external_link changed while fetching`);
+    summary.skipped += 1;
+  };
 
   try {
     let result = await options.fetcher(event.external_link);
@@ -110,43 +121,40 @@ async function processEvent(
         // Unchanged image, but video detection may be new knowledge (the
         // is_video column postdates most rows) — persist just the flag flip.
         if ((event.is_video ?? false) !== result.isVideo) {
-          await options.db.updateEventImage(event.webflow_item_id, {
-            image_status: "ok",
-            is_video: result.isVideo,
-            image_fetched_at: fetchedAt
-          });
+          await write({ image_status: "ok", is_video: result.isVideo, image_fetched_at: fetchedAt });
         }
         summary.skipped += 1;
         return;
       }
 
-      const publicUrl = await options.storage.uploadEventImage(event.webflow_item_id, result.bytes, result.contentType);
-      await options.db.updateEventImage(event.webflow_item_id, {
+      const publicUrl = await options.storage.uploadEventImage(
+        event.webflow_item_id,
+        result.bytes,
+        result.contentType,
+        result.checksum
+      );
+      const applied = await write({
         image_url: `${publicUrl}?v=${result.checksum.slice(0, 8)}`,
         image_status: "ok",
         image_checksum: result.checksum,
         image_fetched_at: fetchedAt,
         is_video: result.isVideo
       });
+      if (!applied) return stale();
       summary.fetched += 1;
       return;
     }
 
     if (result.status === "unavailable") {
-      await options.db.updateEventImage(event.webflow_item_id, {
-        image_url: null,
-        image_status: "unavailable",
-        image_fetched_at: fetchedAt
-      });
+      const applied = await write({ image_url: null, image_status: "unavailable", image_fetched_at: fetchedAt });
+      if (!applied) return stale();
       summary.unavailable += 1;
       return;
     }
 
     options.logger?.error(`Image fetch failed for ${event.webflow_item_id}: ${result.reason}`);
-    await options.db.updateEventImage(event.webflow_item_id, {
-      image_status: "failed",
-      image_fetched_at: fetchedAt
-    });
+    const applied = await write({ image_status: "failed", image_fetched_at: fetchedAt });
+    if (!applied) return stale();
     summary.failed += 1;
   } catch (error) {
     options.logger?.error(
@@ -154,10 +162,7 @@ async function processEvent(
     );
 
     try {
-      await options.db.updateEventImage(event.webflow_item_id, {
-        image_status: "failed",
-        image_fetched_at: fetchedAt
-      });
+      await write({ image_status: "failed", image_fetched_at: fetchedAt });
     } catch (updateError) {
       options.logger?.error(
         `Failed to mark image failed for ${event.webflow_item_id}: ${

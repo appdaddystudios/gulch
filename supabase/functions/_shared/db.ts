@@ -189,9 +189,22 @@ export async function loadEventImageState(client: SupabaseClient, eventId: strin
   return (data as EventImageState | null) ?? null;
 }
 
-export async function updateEventImage(client: SupabaseClient, eventId: string, fields: EventImageUpdate): Promise<void> {
-  const { error } = await client.from("events").update(fields).eq("webflow_item_id", eventId);
+// Guarded by the link the image was fetched for: with overlapping workers
+// (two publishes, or webhook + images job) the one for an older link may
+// finish last and must not win. Returns false when the row no longer matches.
+export async function updateEventImage(
+  client: SupabaseClient,
+  eventId: string,
+  fields: EventImageUpdate,
+  expectedExternalLink: string | null
+): Promise<boolean> {
+  const base = client.from("events").update(fields).eq("webflow_item_id", eventId);
+  const guarded = expectedExternalLink === null
+    ? base.is("external_link", null)
+    : base.eq("external_link", expectedExternalLink);
+  const { data, error } = await guarded.select("webflow_item_id");
   if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 export async function markEventsImagePending(
