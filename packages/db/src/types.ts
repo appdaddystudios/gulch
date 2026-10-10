@@ -385,6 +385,36 @@ export type Database = {
           }
         ];
       };
+      readonly sync_runs: {
+        readonly Row: {
+          readonly id: number;
+          readonly source: "cron" | "site_publish" | "manual";
+          readonly started_at: string;
+          readonly finished_at: string | null;
+          readonly ok: boolean | null;
+          readonly summary: Json | null;
+          readonly error: string | null;
+        };
+        readonly Insert: {
+          readonly id?: never;
+          readonly source: "cron" | "site_publish" | "manual";
+          readonly started_at?: string;
+          readonly finished_at?: string | null;
+          readonly ok?: boolean | null;
+          readonly summary?: Json | null;
+          readonly error?: string | null;
+        };
+        readonly Update: {
+          readonly id?: never;
+          readonly source?: "cron" | "site_publish" | "manual";
+          readonly started_at?: string;
+          readonly finished_at?: string | null;
+          readonly ok?: boolean | null;
+          readonly summary?: Json | null;
+          readonly error?: string | null;
+        };
+        readonly Relationships: [];
+      };
     };
     readonly Views: Record<string, never>;
     readonly Functions: {
