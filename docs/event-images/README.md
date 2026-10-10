@@ -83,7 +83,7 @@ hasImage
 ```
 - Source images are **640×640 JPEG** (hard ceiling) — cover-crop into the hero. Always render the placeholder when not `ok` (~95% resolve; the rest are `unavailable`/`pending`/`failed`). Never show a broken image. Never hotlink Instagram URLs — always use `image_url` (our CDN).
 
-**Storage (FYI):** public bucket `event-images`, key `events/{webflow_item_id}.jpg`, URL `{SUPABASE_URL}/storage/v1/object/public/event-images/events/{id}.jpg`.
+**Storage (FYI):** public bucket `event-images`, key `events/{webflow_item_id}-{checksum8}.jpg` (content-addressed since 2026-10-10 so overlapping writers never clobber each other; rows fetched earlier still point at `events/{id}.jpg`). Always read the URL from `image_url`, never build it.
 
 **Operating the pipeline (stale/missing images):** `pnpm --filter @gulch/pipeline run images` (auto-loads `.env`; rate-limited, idempotent, processes `pending`+`failed`). New events default `pending`; refresh-tick re-marks `pending` only when `external_link` changes; edge never scrapes — drain the queue by re-running `images`. Scraping is best-effort (Meta can break it → placeholder shows; expected, not a bug).
 

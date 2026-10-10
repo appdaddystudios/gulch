@@ -16,15 +16,26 @@ type FakeFilterBuilder = {
   };
 };
 
+type FakeUpdateBuilder = {
+  readonly eq: (column: string, value: string) => FakeUpdateBuilder;
+  readonly neq: (column: string, value: string) => FakeUpdateBuilder;
+  readonly is: (column: string, value: null) => FakeUpdateBuilder;
+  readonly select: (columns: string) => Promise<{
+    readonly data: readonly { readonly webflow_item_id: string }[] | null;
+    readonly error: null | { readonly message: string };
+  }>;
+};
+
+type FakeSelectBuilder = {
+  readonly eq: (column: string, value: boolean) => FakeSelectBuilder;
+  readonly in: (column: string, values: readonly string[]) => FakeFilterBuilder;
+  readonly not: (column: string, operator: string, value: null) => FakeFilterBuilder;
+};
+
 type FakeSupabase = {
   readonly from: (table: "events") => {
-    readonly select: (columns: string) => {
-      readonly in: (column: string, values: readonly string[]) => FakeFilterBuilder;
-      readonly not: (column: string, operator: string, value: null) => FakeFilterBuilder;
-    };
-    readonly update: (values: unknown) => {
-      readonly eq: (column: string, value: string) => Promise<{ readonly error: null | { readonly message: string } }>;
-    };
+    readonly select: (columns: string) => FakeSelectBuilder;
+    readonly update: (values: unknown) => FakeUpdateBuilder;
   };
   readonly storage: {
     readonly from: (bucket: "event-images") => {
@@ -43,7 +54,8 @@ let selectedFilters: string[];
 let selectedRanges: (readonly [number, number])[];
 let selectPages: (readonly ImagesEvent[])[];
 let refreshPages: (readonly ImagesEvent[])[];
-let updates: { readonly values: unknown; readonly column: string; readonly value: string }[];
+let updates: { readonly values: unknown; readonly filters: readonly string[] }[];
+let updateMatched: boolean;
 let uploads: {
   readonly path: string;
   readonly bytes: Uint8Array;
@@ -63,6 +75,7 @@ beforeEach(() => {
   process.env = { ...originalEnv };
   selectedFilters = [];
   updates = [];
+  updateMatched = true;
   uploads = [];
   selectError = null;
   updateError = null;
@@ -79,6 +92,18 @@ beforeEach(() => {
     ]
   ];
   refreshPages = [[]];
+  const updateBuilder = (values: unknown, filters: readonly string[]): FakeUpdateBuilder => ({
+    eq: (column, value) => updateBuilder(values, [...filters, `${column}:eq:${value}`]),
+    neq: (column, value) => updateBuilder(values, [...filters, `${column}:neq:${value}`]),
+    is: (column, value) => updateBuilder(values, [...filters, `${column}:is:${String(value)}`]),
+    select: async () => {
+      updates.push({ values, filters });
+      if (updateError) {
+        return { data: null, error: { message: updateError } };
+      }
+      return { data: updateMatched ? [{ webflow_item_id: "matched" }] : [], error: null };
+    }
+  });
   const pagedBuilder = (pages: (readonly ImagesEvent[])[]): FakeFilterBuilder => ({
     order: () => ({
       range: async (from, to) => {
@@ -92,25 +117,24 @@ beforeEach(() => {
   });
   fakeSupabase = {
     from: () => ({
-      select: () => ({
-        in: (column, values) => {
-          selectedFilters.push(`${column}:${values.join(",")}`);
-          return pagedBuilder(selectPages);
-        },
-        not: (column, operator, value) => {
-          selectedFilters.push(`${column}:${operator}:${String(value)}`);
-          return pagedBuilder(refreshPages);
-        }
-      }),
-      update: (values) => ({
-        eq: async (column, value) => {
-          updates.push({ values, column, value });
-          if (updateError) {
-            return { error: { message: updateError } };
+      select: () => {
+        const builder: FakeSelectBuilder = {
+          eq: (column, value) => {
+            selectedFilters.push(`${column}:eq:${String(value)}`);
+            return builder;
+          },
+          in: (column, values) => {
+            selectedFilters.push(`${column}:${values.join(",")}`);
+            return pagedBuilder(selectPages);
+          },
+          not: (column, operator, value) => {
+            selectedFilters.push(`${column}:${operator}:${String(value)}`);
+            return pagedBuilder(refreshPages);
           }
-          return { error: null };
-        }
-      })
+        };
+        return builder;
+      },
+      update: (values) => updateBuilder(values, [])
     }),
     storage: {
       from: () => ({
@@ -152,14 +176,15 @@ describe("parseImagesCliEnv", () => {
     selectError = null;
     updateError = "write denied";
     await expect(
-      db.updateEventImage("event-1", {
-        image_status: "failed",
-        image_fetched_at: "2026-06-30T12:00:00.000Z"
-      })
+      db.updateEventImage(
+        "event-1",
+        { image_status: "failed", image_fetched_at: "2026-06-30T12:00:00.000Z" },
+        "https://instagram.com/p/1"
+      )
     ).rejects.toThrow(/Failed to update event image event-1: write denied/);
 
     uploadError = "bucket denied";
-    await expect(storage.uploadEventImage("event-1", new Uint8Array([1]), "image/jpeg")).rejects.toThrow(
+    await expect(storage.uploadEventImage("event-1", new Uint8Array([1]), "image/jpeg", "abc")).rejects.toThrow(
       /Failed to upload event image event-1: bucket denied/
     );
   });
@@ -193,33 +218,76 @@ describe("images CLI adapters", () => {
         image_status: "pending"
       }
     ]);
-    await db.updateEventImage("non-ig-event", {
-      image_url: null,
-      image_status: "unavailable",
-      image_fetched_at: "2026-06-30T12:00:00.000Z"
-    });
-    await expect(storage.uploadEventImage("non-ig-event", new Uint8Array([1]), "image/jpeg")).resolves.toBe(
-      "https://cdn.test/events/non-ig-event.jpg"
-    );
+    await expect(
+      db.updateEventImage(
+        "non-ig-event",
+        { image_url: null, image_status: "unavailable", image_fetched_at: "2026-06-30T12:00:00.000Z" },
+        "https://example.com/event"
+      )
+    ).resolves.toBe(true);
+    await expect(
+      storage.uploadEventImage("non-ig-event", new Uint8Array([1]), "image/jpeg", "abcdef1234567890")
+    ).resolves.toBe("https://cdn.test/events/non-ig-event-abcdef12.jpg");
 
-    expect(selectedFilters).toEqual(["image_status:pending,failed"]);
+    // Hidden events are never drained: a failed image on an unpublished
+    // event would otherwise be retried every run forever.
+    expect(selectedFilters).toEqual(["is_live:eq:true", "image_status:pending,failed"]);
     expect(updates).toEqual([
       {
-        column: "webflow_item_id",
-        value: "non-ig-event",
         values: {
           image_url: null,
           image_status: "unavailable",
           image_fetched_at: "2026-06-30T12:00:00.000Z"
-        }
+        },
+        filters: ["webflow_item_id:eq:non-ig-event", "external_link:eq:https://example.com/event", "image_status:neq:ok"]
       }
     ]);
     expect(uploads).toEqual([
       {
-        path: "events/non-ig-event.jpg",
+        path: "events/non-ig-event-abcdef12.jpg",
         bytes: new Uint8Array([1]),
         options: { contentType: "image/jpeg", upsert: true }
       }
+    ]);
+  });
+
+  it("guards a link-less event with IS NULL and reports false when the row no longer matches", async () => {
+    const { createImagesDbClient } = await import("../src/images-cli");
+    const db = createImagesDbClient(fakeSupabase);
+    updateMatched = false;
+
+    await expect(
+      db.updateEventImage("moved", { image_status: "failed", image_fetched_at: "2026-06-30T12:00:00.000Z" }, null)
+    ).resolves.toBe(false);
+
+    expect(updates).toEqual([
+      {
+        values: { image_status: "failed", image_fetched_at: "2026-06-30T12:00:00.000Z" },
+        filters: ["webflow_item_id:eq:moved", "external_link:is:null", "image_status:neq:ok"]
+      }
+    ]);
+  });
+
+  // Two same-link workers (webhook + scheduled job) can overlap; a failure
+  // is evidence of a transient problem, never that the stored hero is wrong,
+  // so a non-ok outcome must not replace an ok one.
+  it("lets an ok write through unguarded but never demotes an ok row with failed or unavailable", async () => {
+    const { createImagesDbClient } = await import("../src/images-cli");
+    const db = createImagesDbClient(fakeSupabase);
+
+    await db.updateEventImage(
+      "e",
+      { image_url: "https://cdn.test/e.jpg?v=1", image_status: "ok", image_checksum: "1", image_fetched_at: "2026-06-30T12:00:00.000Z" },
+      "https://instagram.com/p/1"
+    );
+    updateMatched = false;
+    await expect(
+      db.updateEventImage("e", { image_url: null, image_status: "unavailable", image_fetched_at: "2026-06-30T12:00:01.000Z" }, "https://instagram.com/p/1")
+    ).resolves.toBe(false);
+
+    expect(updates.map((update) => update.filters)).toEqual([
+      ["webflow_item_id:eq:e", "external_link:eq:https://instagram.com/p/1"],
+      ["webflow_item_id:eq:e", "external_link:eq:https://instagram.com/p/1", "image_status:neq:ok"]
     ]);
   });
 
@@ -240,7 +308,12 @@ describe("images CLI adapters", () => {
       [0, 999],
       [1000, 1999]
     ]);
-    expect(selectedFilters).toEqual(["image_status:pending,failed", "image_status:pending,failed"]);
+    expect(selectedFilters).toEqual([
+      "is_live:eq:true",
+      "image_status:pending,failed",
+      "is_live:eq:true",
+      "image_status:pending,failed"
+    ]);
   });
 
   it("selects all events when refresh is enabled and runs main without hitting Instagram for non-IG events", async () => {
@@ -258,7 +331,12 @@ describe("images CLI adapters", () => {
     await expect(createImagesDbClient(fakeSupabase).selectPendingEvents(true)).resolves.toEqual([]);
     await main();
 
-    expect(selectedFilters).toEqual(["webflow_item_id:is:null", "image_status:pending,failed"]);
+    expect(selectedFilters).toEqual([
+      "is_live:eq:true",
+      "webflow_item_id:is:null",
+      "is_live:eq:true",
+      "image_status:pending,failed"
+    ]);
     expect(JSON.parse(logs[0] ?? "{}")).toEqual({
       scanned: 1,
       fetched: 0,

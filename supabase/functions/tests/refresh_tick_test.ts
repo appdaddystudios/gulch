@@ -1,4 +1,5 @@
 import { createRefreshHandler } from "../refresh-tick/index.ts";
+import { noopSyncRuns } from "../_shared/refresh.ts";
 import { assertEquals, envelope } from "./helpers.ts";
 
 const locationItems = [
@@ -67,6 +68,7 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
   const eventOrganizerReplacements: unknown[] = [];
   const managingRefUpdates: unknown[] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -102,6 +104,12 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
       if (rows.length > 0) upsertOrder.push(table);
       upsertRows[table] = [...(upsertRows[table] ?? []), ...rows];
     },
+    applyEventRows: async (rows) => {
+      if (rows.length > 0) upsertOrder.push("events");
+      upsertRows.events = [...(upsertRows.events ?? []), ...rows];
+      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarkedIds: [] };
+    },
+    fetchItem: async (_token, _collectionId, itemId) => eventItems.find((item) => item.id === itemId) ?? null,
     replaceAllEventOrganizers: async (rows) => {
       eventOrganizerReplacements.push(rows);
       return { inserted: rows.length };
@@ -128,7 +136,9 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
   assertEquals(summary, {
     organizers: { scanned: 1, upserted: 1, geocoded: 0, failed: 0 },
     locations: { scanned: 2, upserted: 1, geocoded: 1, failed: 0 },
-    imagePending: { marked: 0 },
+    eventWrites: { inserted: 1, updated: 0, stale: 0, hiddenAfterInsert: 0 },
+    imagePending: { marked: 0, fetched: 0 },
+    presence: { hidden: 0, revived: 0, deferred: 0, skipped: false },
     events: { scanned: 2, upserted: 1, geocoded: 0, failed: 0 },
     shows: { scanned: 0, upserted: 0, geocoded: 0, failed: 0 },
     eventOrganizers: { derived: 2, replaced: 1, skipped: 1 },
@@ -141,6 +151,7 @@ Deno.test("refresh-tick fully reconciles organizer relationships for unchanged r
   const managingRefUpdates: unknown[] = [];
   const upserts: string[] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -237,6 +248,10 @@ Deno.test("refresh-tick fully reconciles organizer relationships for unchanged r
     upsert: async (table, rows) => {
       if (rows.length > 0) upserts.push(table);
     },
+    applyEventRows: async (rows) => {
+      if (rows.length > 0) upserts.push("events");
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [] };
+    },
     replaceAllEventOrganizers: async (rows) => {
       eventOrganizerReplacements.push(rows);
       return { inserted: rows.length };
@@ -268,6 +283,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
   const upsertRows: Record<string, unknown[]> = {};
   const markedPending: string[][] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -339,12 +355,14 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
     upsert: async (table, rows) => {
       upsertRows[table] = [...(upsertRows[table] ?? []), ...rows];
     },
+    applyEventRows: async (rows, _observedAt, pendingIds) => {
+      upsertRows.events = [...(upsertRows.events ?? []), ...rows];
+      if (pendingIds.size > 0) markedPending.push([...pendingIds]);
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [...pendingIds] };
+    },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
-    markEventsImagePending: async (ids) => {
-      markedPending.push([...ids]);
-      return { updated: ids.length };
-    }
+    fetchHeroImage: async () => "ok",
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
   const response = await handler(new Request("https://example.test", {
@@ -365,6 +383,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
       external_link: "https://www.instagram.com/p/new/",
       tickets_required: false,
       editors_pick: false,
+      is_live: true,
       webflow_last_updated: "2026-06-03T00:00:00.000Z"
     },
     {
@@ -378,17 +397,19 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
       external_link: "https://www.instagram.com/p/same/",
       tickets_required: false,
       editors_pick: false,
+      is_live: true,
       webflow_last_updated: "2026-06-03T00:00:00.000Z"
     }
   ]);
   assertEquals(upsertRows.events?.every((row) => !("image_status" in (row as Record<string, unknown>))), true);
   assertEquals(markedPending, [["changed-link-event"]]);
-  assertEquals((await response.json()).imagePending, { marked: 1 });
+  assertEquals((await response.json()).imagePending, { marked: 1, fetched: 1 });
 });
 
 Deno.test("refresh-tick marks image pending when an existing event link is newly set or cleared", async () => {
   const markedPending: string[][] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -435,12 +456,13 @@ Deno.test("refresh-tick marks image pending when an existing event link is newly
       : [],
     geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
     upsert: async () => {},
+    applyEventRows: async (rows, _observedAt, pendingIds) => {
+      if (pendingIds.size > 0) markedPending.push([...pendingIds]);
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [...pendingIds] };
+    },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
-    markEventsImagePending: async (ids) => {
-      markedPending.push([...ids]);
-      return { updated: ids.length };
-    }
+    fetchHeroImage: async () => "ok",
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
   const response = await handler(new Request("https://example.test", {
@@ -451,12 +473,13 @@ Deno.test("refresh-tick marks image pending when an existing event link is newly
 
   assertEquals(response.status, 200);
   assertEquals(markedPending, [["newly-set-link-event", "cleared-link-event"]]);
-  assertEquals(summary.imagePending, { marked: 2 });
+  assertEquals(summary.imagePending, { marked: 2, fetched: 2 });
 });
 
 Deno.test("refresh-tick does not mark image pending when changed event links are unchanged", async () => {
   const markedPending: string[][] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -488,12 +511,13 @@ Deno.test("refresh-tick does not mark image pending when changed event links are
       : [],
     geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
     upsert: async () => {},
+    applyEventRows: async (rows, _observedAt, pendingIds) => {
+      if (pendingIds.size > 0) markedPending.push([...pendingIds]);
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [...pendingIds] };
+    },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
-    markEventsImagePending: async (ids) => {
-      markedPending.push([...ids]);
-      return { updated: ids.length };
-    }
+    fetchHeroImage: async () => "ok",
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
   const response = await handler(new Request("https://example.test", {
@@ -504,5 +528,5 @@ Deno.test("refresh-tick does not mark image pending when changed event links are
 
   assertEquals(response.status, 200);
   assertEquals(markedPending, []);
-  assertEquals(summary.imagePending, { marked: 0 });
+  assertEquals(summary.imagePending, { marked: 0, fetched: 0 });
 });

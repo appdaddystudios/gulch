@@ -2,7 +2,10 @@ name: Event Images
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    # Half past, not on the hour: the refresh-tick reconcile runs at 0 */6 and
+    # may mark link-changed events pending; this drain must select its queue
+    # after that, and GitHub's top-of-hour cron slots are the most delayed.
+    - cron: "30 */6 * * *"
   workflow_dispatch:
 
 concurrency:

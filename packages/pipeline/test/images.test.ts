@@ -19,22 +19,28 @@ describe("runImages", () => {
       { webflow_item_id: "unavailable-event", external_link: "https://example.com", image_checksum: null, image_status: "pending" },
       { webflow_item_id: "failed-event", external_link: "https://instagram.com/p/3", image_checksum: null, image_status: "failed" }
     ];
-    const updates: { readonly id: string; readonly fields: unknown }[] = [];
-    const uploaded: { readonly id: string; readonly bytes: Uint8Array; readonly contentType: string }[] = [];
+    const updates: { readonly id: string; readonly fields: unknown; readonly expectedLink: string | null }[] = [];
+    const uploaded: {
+      readonly id: string;
+      readonly bytes: Uint8Array;
+      readonly contentType: string;
+      readonly checksum: string;
+    }[] = [];
     const logs: string[] = [];
     const db: ImagesDbClient = {
       selectPendingEvents: async (refresh) => {
         expect(refresh).toBe(true);
         return events;
       },
-      updateEventImage: async (id, fields) => {
-        updates.push({ id, fields });
+      updateEventImage: async (id, fields, expectedLink) => {
+        updates.push({ id, fields, expectedLink });
+        return true;
       }
     };
     const storage: StorageClient = {
-      uploadEventImage: async (eventId, bytes, contentType) => {
-        uploaded.push({ id: eventId, bytes, contentType });
-        return `https://supabase.test/storage/v1/object/public/event-images/events/${eventId}.jpg`;
+      uploadEventImage: async (eventId, bytes, contentType, checksum) => {
+        uploaded.push({ id: eventId, bytes, contentType, checksum });
+        return `https://supabase.test/storage/v1/object/public/event-images/events/${eventId}-${checksum.slice(0, 8)}.jpg`;
       }
     };
 
@@ -56,7 +62,7 @@ describe("runImages", () => {
     });
 
     expect(uploaded).toEqual([
-      { id: "upload-event", bytes: new Uint8Array([1, 2, 3]), contentType: "image/jpeg" }
+      { id: "upload-event", bytes: new Uint8Array([1, 2, 3]), contentType: "image/jpeg", checksum: "abcdef1234567890" }
     ]);
     expect(updates).toHaveLength(3);
     expect(updates).toEqual(
@@ -64,12 +70,13 @@ describe("runImages", () => {
         {
         id: "upload-event",
         fields: {
-          image_url: "https://supabase.test/storage/v1/object/public/event-images/events/upload-event.jpg?v=abcdef12",
+          image_url: "https://supabase.test/storage/v1/object/public/event-images/events/upload-event-abcdef12.jpg?v=abcdef12",
           image_status: "ok",
           image_checksum: "abcdef1234567890",
           image_fetched_at: "2026-06-30T12:00:00.000Z",
           is_video: false
-        }
+        },
+        expectedLink: "https://instagram.com/p/1"
         },
         {
         id: "unavailable-event",
@@ -77,14 +84,16 @@ describe("runImages", () => {
           image_url: null,
           image_status: "unavailable",
           image_fetched_at: "2026-06-30T12:00:00.000Z"
-        }
+        },
+        expectedLink: "https://example.com"
         },
         {
         id: "failed-event",
         fields: {
           image_status: "failed",
           image_fetched_at: "2026-06-30T12:00:00.000Z"
-        }
+        },
+        expectedLink: "https://instagram.com/p/3"
         }
       ])
     );
@@ -103,6 +112,7 @@ describe("runImages", () => {
         ],
         updateEventImage: async (id, fields) => {
           updates.push({ id, fields });
+          return true;
         }
       },
       storage: {
@@ -143,7 +153,7 @@ describe("runImages", () => {
     const summary = await runImages({
       db: {
         selectPendingEvents: async () => events,
-        updateEventImage: async () => undefined
+        updateEventImage: async () => true
       },
       storage: {
         uploadEventImage: async (eventId) => `https://cdn.test/${eventId}.jpg`
@@ -182,7 +192,7 @@ describe("runImages", () => {
             image_status: "pending"
           }
         ],
-        updateEventImage: async () => undefined
+        updateEventImage: async () => true
       },
       storage: {
         uploadEventImage: async (eventId) => `https://cdn.test/${eventId}.jpg`
@@ -219,7 +229,7 @@ describe("runImages", () => {
             image_status: "pending"
           }
         ],
-        updateEventImage: async () => undefined
+        updateEventImage: async () => true
       },
       storage: {
         uploadEventImage: async (eventId) => `https://cdn.test/${eventId}.jpg`
@@ -236,6 +246,29 @@ describe("runImages", () => {
     expect(summary).toEqual({ scanned: 1, fetched: 0, unavailable: 0, failed: 1, skipped: 0 });
   });
 
+  // A worker that fetched for a link the event no longer has (a publish
+  // changed it mid-run) must not overwrite the newer result.
+  it("drops a result whose event link changed while it was fetching", async () => {
+    const logs: string[] = [];
+    const summary = await runImages({
+      db: {
+        selectPendingEvents: async () => [
+          { webflow_item_id: "moved", external_link: "https://instagram.com/p/old", image_checksum: null, image_status: "pending" }
+        ],
+        updateEventImage: async () => false
+      },
+      storage: {
+        uploadEventImage: async (eventId) => `https://cdn.test/${eventId}.jpg`
+      },
+      fetcher: async () => okResult("abcdef1234567890"),
+      minDelayMs: 0,
+      logger: { info: (message) => logs.push(message), error: () => undefined }
+    });
+
+    expect(logs).toEqual(["Image for moved skipped: superseded by a newer result"]);
+    expect(summary).toEqual({ scanned: 1, fetched: 0, unavailable: 0, failed: 0, skipped: 1 });
+  });
+
   it("does not let one event exception abort the run", async () => {
     const updates: string[] = [];
     const summary = await runImages({
@@ -246,6 +279,7 @@ describe("runImages", () => {
         ],
         updateEventImage: async (id) => {
           updates.push(id);
+          return true;
         }
       },
       storage: {

@@ -41,8 +41,46 @@ export type ReconcileOptions = {
   now?: () => string;
 };
 
-function changed(item: WebflowItem, existing: ReadonlyMap<string, string | null>): boolean {
-  return existing.get(item.id) !== item.lastUpdated;
+// PostgREST returns timestamptz as `...+00:00`, Webflow as `...Z`; compare
+// instants, not strings, or every row looks changed on every run.
+const toEpoch = (value: string | null | undefined): number => (value ? Date.parse(value) : Number.NaN);
+
+export function changed(item: WebflowItem, existing: ReadonlyMap<string, string | null>): boolean {
+  return toEpoch(existing.get(item.id)) !== toEpoch(item.lastUpdated);
+}
+
+export type PresencePlan = {
+  toHide: string[];
+  toRevive: string[];
+  // Hides beyond this run's guarded batch; they converge over later runs.
+  deferred: number;
+  skipped: boolean;
+  reason?: string;
+};
+
+// Never hide more than this share of rows in one run, an empty live set
+// included: a short or empty Webflow response can cost at most one batch,
+// and reviving is unguarded so the next good run restores it.
+export const PRESENCE_GUARD_MIN = 25;
+export const PRESENCE_GUARD_SHARE = 0.1;
+
+// The live set from Webflow is the truth for events: absent → not live,
+// present again → live (an unpublish + re-publish without edits leaves
+// lastUpdated untouched, so the upsert path alone would never revive it).
+export function planPresence(existing: readonly ExistingRow[], liveIds: ReadonlySet<string>): PresencePlan {
+  const toHide = existing
+    .filter((row) => row.is_live !== false && !liveIds.has(row.webflow_item_id))
+    .map((row) => row.webflow_item_id);
+  const toRevive = existing
+    .filter((row) => row.is_live === false && liveIds.has(row.webflow_item_id))
+    .map((row) => row.webflow_item_id);
+  // Hide at most one guarded batch per run. A bad snapshot can then hide no
+  // more than this, and revives are unguarded so the next good run undoes
+  // it; a legitimately large set converges over runs instead of being
+  // skipped forever. Rows arrive ordered by id, so successive runs progress.
+  const limit = Math.max(PRESENCE_GUARD_MIN, Math.floor(existing.length * PRESENCE_GUARD_SHARE));
+  const deferred = Math.max(0, toHide.length - limit);
+  return { toHide: toHide.slice(0, limit), toRevive, deferred, skipped: false };
 }
 
 async function reconcileLocations(rawItems: readonly WebflowItem[], options: ReconcileOptions): Promise<ReconcileResult<LocationRow>> {
