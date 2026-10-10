@@ -5,6 +5,7 @@ import {
   lastSyncRunStartedAt,
   loadEventImageState,
   loadKnownOrganizerIds,
+  markEventsImagePending,
   replaceEventOrganizers,
   setEventsLive,
   upsertRows,
@@ -33,6 +34,7 @@ type ReplaceEventOrganizersFn = (
   knownOrganizerIds: ReadonlySet<string>
 ) => Promise<{ inserted: number; skipped: number }>;
 type SetEventsLiveFn = (ids: readonly string[], isLive: boolean) => Promise<{ updated: number }>;
+type MarkEventsImagePendingFn = (ids: readonly string[]) => Promise<{ updated: number }>;
 
 export type WebhookDeps = {
   env?: (key: string) => string | undefined;
@@ -49,6 +51,7 @@ export type WebhookDeps = {
   refreshDeps?: RefreshDeps;
   lastSiteRefreshStartedAt?: () => Promise<string | null>;
   loadEventImageState?: (eventId: string) => Promise<EventImageState | null>;
+  markEventsImagePending?: MarkEventsImagePendingFn;
   fetchHeroImage?: (eventId: string, externalLink: string | null) => Promise<HeroImageOutcome>;
   now?: () => string;
 };
@@ -142,6 +145,8 @@ function resolveDeps(deps: WebhookDeps) {
       (() => lastSyncRunStartedAt(createServiceClient(), "site_publish")),
     loadEventImageState: deps.loadEventImageState ??
       ((eventId: string) => loadEventImageState(createServiceClient(), eventId)),
+    markImagePending: deps.markEventsImagePending ??
+      ((ids: readonly string[]) => markEventsImagePending(createServiceClient(), ids)),
     fetchHeroImage: deps.fetchHeroImage ??
       ((eventId: string, externalLink: string | null) => fetchHeroImage(eventId, externalLink, { fetcher })),
     now: deps.now ?? (() => new Date().toISOString())
@@ -160,20 +165,32 @@ async function upsertLiveItem(d: Resolved, table: CollectionName, collectionId: 
 
   const knownOrganizerIds = table === "shows" ? new Set<string>() : await d.loadOrganizerIds();
   const row = await mapWebhookItem(table, item, d.geocoder, knownOrganizerIds, d.now);
+  // Read before the upsert: it keeps the image columns and advances
+  // webflow_last_updated, so a changed link is invisible afterwards.
+  const imageBefore = table === "events" ? await d.loadEventImageState(item.id) : null;
   await d.upsert(table, [row]);
   if (table === "events") {
     await d.replaceEventOrgs(item.id, deriveEventOrganizers(item), knownOrganizerIds);
-    await scheduleHeroImage(d, item.id);
+    await scheduleHeroImage(d, item.id, imageBefore, "external_link" in row ? row.external_link : null);
   }
   return jsonResponse({ ok: true });
 }
 
-// A freshly upserted event has image_status pending until the images job
-// runs (every 6 h) — and Home hides events without an image. Fetch it now.
-async function scheduleHeroImage(d: Resolved, eventId: string): Promise<void> {
-  const state = await d.loadEventImageState(eventId);
-  if (!state || state.image_status !== "pending") return;
-  d.waitUntil(d.fetchHeroImage(eventId, state.external_link));
+// Home hides events without an image and the images job runs only every
+// 6 h, so fetch now when the row is new (DB default: pending), still
+// pending, or its link changed on a published edit. A changed link is
+// marked pending first so the images job retries if the fetch dies.
+async function scheduleHeroImage(
+  d: Resolved,
+  eventId: string,
+  before: EventImageState | null,
+  externalLink: string | null
+): Promise<void> {
+  const linkChanged = before !== null && (before.external_link ?? null) !== externalLink;
+  const needsFetch = before === null || before.image_status === "pending" || linkChanged;
+  if (!needsFetch) return;
+  if (linkChanged) await d.markImagePending([eventId]);
+  d.waitUntil(d.fetchHeroImage(eventId, externalLink));
 }
 
 async function hideItem(d: Resolved, table: CollectionName, itemId: string): Promise<Response> {

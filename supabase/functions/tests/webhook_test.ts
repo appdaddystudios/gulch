@@ -148,6 +148,8 @@ Deno.test("webhook replaces event organizers for created events and skips dangli
     fetchLiveItemFn: async () => eventItem,
     loadKnownOrganizerIds: async () => new Set(["organizer-123"]),
     loadEventImageState: async () => null,
+    fetchHeroImage: async () => "unavailable",
+    waitUntil: () => {},
     upsert: async (table, rows) => {
       calls.push({ table, rows });
     },
@@ -210,6 +212,8 @@ Deno.test("webhook-created event relies on the database default image status", a
     }),
     loadKnownOrganizerIds: async () => new Set(["organizer-123"]),
     loadEventImageState: async () => null,
+    fetchHeroImage: async () => "unavailable",
+    waitUntil: () => {},
     upsert: async (table, rows) => {
       calls.push({ table, rows: rows as readonly Record<string, unknown>[] });
     },

@@ -26,10 +26,11 @@ type Recorder = {
   background: Promise<unknown>[];
   refreshes: string[];
   heroFetches: { eventId: string; link: string | null }[];
+  pendingMarks: string[][];
 };
 
 function record(): Recorder {
-  return { upserts: [], liveCalls: [], background: [], refreshes: [], heroFetches: [] };
+  return { upserts: [], liveCalls: [], background: [], refreshes: [], heroFetches: [], pendingMarks: [] };
 }
 
 function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
@@ -57,6 +58,10 @@ function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
     fetchHeroImage: async (eventId, link) => {
       rec.heroFetches.push({ eventId, link });
       return "ok";
+    },
+    markEventsImagePending: async (ids) => {
+      rec.pendingMarks.push([...ids]);
+      return { updated: ids.length };
     },
     now: () => NOW,
     ...overrides
@@ -89,6 +94,60 @@ Deno.test("hero image is not fetched when the event already has one", async () =
 
   assertEquals(rec.upserts.length, 1);
   assertEquals(rec.background.length, 0);
+  assertEquals(rec.heroFetches, []);
+  assertEquals(rec.pendingMarks, []);
+});
+
+// The upsert keeps the image columns and advances webflow_last_updated, so a
+// changed link must be caught here against the pre-upsert row: no later
+// reconcile will see it as changed.
+Deno.test("published edit that changes external_link resets the image and fetches the new one", async () => {
+  const rec = record();
+  let upsertsWhenStateLoaded = -1;
+  await handlerWith(rec, {
+    loadEventImageState: async () => {
+      upsertsWhenStateLoaded = rec.upserts.length;
+      return { image_status: "ok", external_link: "https://www.instagram.com/p/old/" };
+    }
+  })(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+
+  assertEquals(upsertsWhenStateLoaded, 0);
+  assertEquals(rec.pendingMarks, [["event-123"]]);
+  await Promise.all(rec.background);
+  assertEquals(rec.heroFetches, [{ eventId: "event-123", link: "https://www.instagram.com/p/abc/" }]);
+});
+
+Deno.test("published edit that removes external_link resets the image so the old hero is dropped", async () => {
+  const rec = record();
+  const { "external-link": _removed, ...fieldsWithoutLink } = eventItem.fieldData;
+  await handlerWith(rec, {
+    fetchLiveItemFn: async () => ({ ...eventItem, fieldData: fieldsWithoutLink }),
+    loadEventImageState: async () => ({ image_status: "ok", external_link: "https://www.instagram.com/p/abc/" })
+  })(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+
+  assertEquals(rec.pendingMarks, [["event-123"]]);
+  await Promise.all(rec.background);
+  assertEquals(rec.heroFetches, [{ eventId: "event-123", link: null }]);
+});
+
+Deno.test("brand-new event with no row yet fetches its hero image without a pending reset", async () => {
+  const rec = record();
+  await handlerWith(rec, { loadEventImageState: async () => null })(
+    post({ triggerType: "collection_item_created", payload: { collectionId: EVENTS, id: "event-123" } })
+  );
+
+  assertEquals(rec.pendingMarks, []);
+  await Promise.all(rec.background);
+  assertEquals(rec.heroFetches, [{ eventId: "event-123", link: "https://www.instagram.com/p/abc/" }]);
+});
+
+Deno.test("re-published event with an unchanged link and a failed image is left to the images job", async () => {
+  const rec = record();
+  await handlerWith(rec, {
+    loadEventImageState: async () => ({ image_status: "failed", external_link: "https://www.instagram.com/p/abc/" })
+  })(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+
+  assertEquals(rec.pendingMarks, []);
   assertEquals(rec.heroFetches, []);
 });
 
