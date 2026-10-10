@@ -1,4 +1,5 @@
 import { createRefreshHandler } from "../refresh-tick/index.ts";
+import { noopSyncRuns } from "../_shared/refresh.ts";
 import { assertEquals, envelope } from "./helpers.ts";
 
 const locationItems = [
@@ -67,6 +68,7 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
   const eventOrganizerReplacements: unknown[] = [];
   const managingRefUpdates: unknown[] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -129,6 +131,7 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
     organizers: { scanned: 1, upserted: 1, geocoded: 0, failed: 0 },
     locations: { scanned: 2, upserted: 1, geocoded: 1, failed: 0 },
     imagePending: { marked: 0 },
+    presence: { hidden: 0, revived: 0, skipped: false },
     events: { scanned: 2, upserted: 1, geocoded: 0, failed: 0 },
     shows: { scanned: 0, upserted: 0, geocoded: 0, failed: 0 },
     eventOrganizers: { derived: 2, replaced: 1, skipped: 1 },
@@ -141,6 +144,7 @@ Deno.test("refresh-tick fully reconciles organizer relationships for unchanged r
   const managingRefUpdates: unknown[] = [];
   const upserts: string[] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -268,6 +272,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
   const upsertRows: Record<string, unknown[]> = {};
   const markedPending: string[][] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -365,6 +370,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
       external_link: "https://www.instagram.com/p/new/",
       tickets_required: false,
       editors_pick: false,
+      is_live: true,
       webflow_last_updated: "2026-06-03T00:00:00.000Z"
     },
     {
@@ -378,6 +384,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
       external_link: "https://www.instagram.com/p/same/",
       tickets_required: false,
       editors_pick: false,
+      is_live: true,
       webflow_last_updated: "2026-06-03T00:00:00.000Z"
     }
   ]);
@@ -389,6 +396,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
 Deno.test("refresh-tick marks image pending when an existing event link is newly set or cleared", async () => {
   const markedPending: string[][] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",
@@ -457,6 +465,7 @@ Deno.test("refresh-tick marks image pending when an existing event link is newly
 Deno.test("refresh-tick does not mark image pending when changed event links are unchanged", async () => {
   const markedPending: string[][] = [];
   const handler = createRefreshHandler({
+    syncRuns: noopSyncRuns,
     env: (key) => ({
       GULCH_REFRESH_SECRET: "right",
       GULCH_WEBFLOW_API_KEY: "webflow",

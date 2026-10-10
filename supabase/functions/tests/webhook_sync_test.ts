@@ -1,0 +1,187 @@
+// Trigger dispatch added for event sync: published / unpublished / deleted /
+// site_publish / changed, plus the immediate hero-image kick-off. The
+// original collection_item_created behaviour is covered by webhook_test.ts.
+import { createWebhookHandler, SITE_PUBLISH_DEBOUNCE_MS, type WebhookDeps } from "../webflow-webhook/index.ts";
+import { assertEquals, envelope } from "./helpers.ts";
+
+const EVENTS = "6845d39c294d60e4c197cee9";
+const LOCATIONS = "6843bee91e942f36fd3adc06";
+const NOW = "2026-10-10T12:00:00.000Z";
+
+const eventItem = {
+  ...envelope,
+  id: "event-123",
+  lastUpdated: "2026-06-02T12:00:00.000Z",
+  fieldData: {
+    name: "Event 123",
+    slug: "event-123",
+    "start-date-time": "2026-07-03T22:00:00.000Z",
+    "external-link": "https://www.instagram.com/p/abc/"
+  }
+};
+
+type Recorder = {
+  upserts: { table: string; rows: readonly Record<string, unknown>[] }[];
+  liveCalls: { ids: readonly string[]; isLive: boolean }[];
+  background: Promise<unknown>[];
+  refreshes: string[];
+  heroFetches: { eventId: string; link: string | null }[];
+};
+
+function record(): Recorder {
+  return { upserts: [], liveCalls: [], background: [], refreshes: [], heroFetches: [] };
+}
+
+function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
+  return createWebhookHandler({
+    env: (key) => ({ GULCH_WEBHOOK_SECRET: "right", GULCH_WEBFLOW_API_KEY: "webflow" })[key],
+    fetchLiveItemFn: async () => eventItem,
+    loadKnownOrganizerIds: async () => new Set<string>(),
+    upsert: async (table, rows) => {
+      rec.upserts.push({ table, rows: rows as readonly Record<string, unknown>[] });
+    },
+    replaceEventOrganizers: async () => ({ inserted: 0, skipped: 0 }),
+    setEventsLive: async (ids, isLive) => {
+      rec.liveCalls.push({ ids, isLive });
+      return { updated: ids.length };
+    },
+    waitUntil: (promise) => {
+      rec.background.push(promise);
+    },
+    runRefresh: async (source) => {
+      rec.refreshes.push(source);
+      return {} as never;
+    },
+    lastSiteRefreshStartedAt: async () => null,
+    loadEventImageState: async () => ({ image_status: "pending", external_link: eventItem.fieldData["external-link"] }),
+    fetchHeroImage: async (eventId, link) => {
+      rec.heroFetches.push({ eventId, link });
+      return "ok";
+    },
+    now: () => NOW,
+    ...overrides
+  });
+}
+
+function post(body: unknown): Request {
+  return new Request("https://example.test?secret=right", { method: "POST", body: JSON.stringify(body) });
+}
+
+Deno.test("published event is upserted live and its pending hero image is fetched in the background", async () => {
+  const rec = record();
+  const response = await handlerWith(rec)(post({
+    triggerType: "collection_item_published",
+    payload: { collectionId: EVENTS, id: "event-123" }
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(rec.upserts.length, 1);
+  assertEquals(rec.upserts[0]?.rows[0]?.is_live, true);
+  await Promise.all(rec.background);
+  assertEquals(rec.heroFetches, [{ eventId: "event-123", link: "https://www.instagram.com/p/abc/" }]);
+});
+
+Deno.test("hero image is not fetched when the event already has one", async () => {
+  const rec = record();
+  await handlerWith(rec, {
+    loadEventImageState: async () => ({ image_status: "ok", external_link: "https://www.instagram.com/p/abc/" })
+  })(post({ triggerType: "collection_item_created", payload: { collectionId: EVENTS, id: "event-123" } }));
+
+  assertEquals(rec.upserts.length, 1);
+  assertEquals(rec.background.length, 0);
+  assertEquals(rec.heroFetches, []);
+});
+
+Deno.test("published item that is not live on Webflow is skipped", async () => {
+  const rec = record();
+  const response = await handlerWith(rec, { fetchLiveItemFn: async () => null })(post({
+    triggerType: "collection_item_published",
+    payload: { collectionId: EVENTS, id: "event-123" }
+  }));
+
+  assertEquals(await response.json(), { ok: true, skipped: "not live" });
+  assertEquals(rec.upserts, []);
+});
+
+Deno.test("unpublished and deleted events are hidden, never removed", async () => {
+  const rec = record();
+  const handler = handlerWith(rec);
+
+  const unpublished = await handler(post({
+    triggerType: "collection_item_unpublished",
+    payload: { collectionId: EVENTS, id: "event-123" }
+  }));
+  const deleted = await handler(post({
+    triggerType: "collection_item_deleted",
+    payload: { collectionId: EVENTS, id: "event-456" }
+  }));
+
+  assertEquals(await unpublished.json(), { ok: true, hidden: 1 });
+  assertEquals(await deleted.json(), { ok: true, hidden: 1 });
+  assertEquals(rec.liveCalls, [
+    { ids: ["event-123"], isLive: false },
+    { ids: ["event-456"], isLive: false }
+  ]);
+  assertEquals(rec.upserts, []);
+});
+
+Deno.test("unpublishing a non-event collection item is acknowledged and ignored", async () => {
+  const rec = record();
+  const response = await handlerWith(rec)(post({
+    triggerType: "collection_item_unpublished",
+    payload: { collectionId: LOCATIONS, id: "location-1" }
+  }));
+
+  assertEquals(await response.json(), { ok: true, ignored: "locations" });
+  assertEquals(rec.liveCalls, []);
+});
+
+Deno.test("staged edits (collection_item_changed) do not touch the database", async () => {
+  const rec = record();
+  const response = await handlerWith(rec)(post({
+    triggerType: "collection_item_changed",
+    payload: { collectionId: EVENTS, id: "event-123" }
+  }));
+
+  assertEquals(await response.json(), { ok: true });
+  assertEquals(rec.upserts, []);
+  assertEquals(rec.liveCalls, []);
+});
+
+Deno.test("hide triggers without item identifiers are rejected", async () => {
+  const rec = record();
+  const response = await handlerWith(rec)(post({ triggerType: "collection_item_deleted", payload: {} }));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("site_publish schedules a full reconcile in the background and responds immediately", async () => {
+  const rec = record();
+  const response = await handlerWith(rec)(post({
+    triggerType: "site_publish",
+    payload: { siteId: "site-1", publishedOn: NOW, domains: ["gulchmagazine.com"] }
+  }));
+
+  assertEquals(await response.json(), { ok: true, scheduled: "reconcile" });
+  assertEquals(rec.background.length, 1);
+  await Promise.all(rec.background);
+  assertEquals(rec.refreshes, ["site_publish"]);
+});
+
+Deno.test("site_publish is debounced inside the window and runs again outside it", async () => {
+  const insideWindow = new Date(Date.parse(NOW) - SITE_PUBLISH_DEBOUNCE_MS + 1000).toISOString();
+  const outsideWindow = new Date(Date.parse(NOW) - SITE_PUBLISH_DEBOUNCE_MS - 1000).toISOString();
+
+  const inside = record();
+  const debounced = await handlerWith(inside, { lastSiteRefreshStartedAt: async () => insideWindow })(
+    post({ triggerType: "site_publish", payload: {} })
+  );
+  assertEquals(await debounced.json(), { ok: true, debounced: true });
+  assertEquals(inside.refreshes, []);
+
+  const outside = record();
+  await handlerWith(outside, { lastSiteRefreshStartedAt: async () => outsideWindow })(
+    post({ triggerType: "site_publish", payload: {} })
+  );
+  await Promise.all(outside.background);
+  assertEquals(outside.refreshes, ["site_publish"]);
+});

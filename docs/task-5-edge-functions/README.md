@@ -35,13 +35,41 @@ Enable `pg_cron` and `pg_net`, then run [schedule.sql](../../supabase/functions/
 
 The schedule posts daily at 10:00 UTC, which is 06:00 ET during daylight time.
 
-## 4. Register Webflow Webhook
+## 4. Register Webflow Webhooks
 
-Register a Webflow webhook on the Gulch site:
+Register Webflow webhooks on the Gulch site, all pointing at the same URL:
 
 - Site ID: `684345d2fa9a950b8116b072`
-- Trigger type: `collection_item_created`
 - URL: `https://basetbhtpifqbsqmgedv.supabase.co/functions/v1/webflow-webhook?secret=akBzbWluZUBmMG50ZXo0ZXYzciE`
+- Trigger types:
+  - `collection_item_created` — new item (already registered 2026-06-30)
+  - `collection_item_published` — any published edit; also items published after a draft period
+  - `collection_item_unpublished` — the founder's cancel flow; the event is hidden in the app
+  - `collection_item_deleted` — same as unpublished
+  - `site_publish` — full reconcile in the background (debounced to one per 2 minutes)
+
+`collection_item_changed` is deliberately not registered: it fires on staged edits, and the app mirrors only what is published.
+
+```sh
+for t in collection_item_published collection_item_unpublished collection_item_deleted site_publish; do
+  curl -s -X POST "https://api.webflow.com/v2/sites/684345d2fa9a950b8116b072/webhooks" \
+    -H "Authorization: Bearer $GULCH_WEBFLOW_API_KEY" -H "Content-Type: application/json" \
+    -d "{\"triggerType\":\"$t\",\"url\":\"$WEBHOOK_URL\"}"
+done
+curl -s -H "Authorization: Bearer $GULCH_WEBFLOW_API_KEY" \
+  https://api.webflow.com/v2/sites/684345d2fa9a950b8116b072/webhooks | jq '.webhooks[] | {triggerType, url}'
+```
+
+## 4a. Backfill after the first deploy
+
+Hide events that were unpublished before the new triggers existed:
+
+```sh
+curl -s -X POST "https://basetbhtpifqbsqmgedv.supabase.co/functions/v1/refresh-tick?source=manual" \
+  -H "Authorization: Bearer $GULCH_REFRESH_SECRET" | jq .presence
+```
+
+Then confirm in `sync_runs` (`select * from public.sync_runs order by started_at desc limit 3`).
 
 ## 5. Verify
 

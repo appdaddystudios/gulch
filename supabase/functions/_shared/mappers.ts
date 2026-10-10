@@ -35,6 +35,10 @@ export type EventRow = {
   external_link: string | null;
   tickets_required: boolean;
   editors_pick: boolean;
+  // Webflow "published" = visible in the app. Every mapped item came from the
+  // live endpoint, so a mapped row is live by definition; unpublish/delete
+  // webhooks and the presence pass flip it off.
+  is_live: boolean;
   webflow_last_updated: string;
 };
 
@@ -100,6 +104,7 @@ export function mapEvent(raw: unknown): EventRow {
     external_link: fields["external-link"] ?? null,
     tickets_required: fields["show-tickets-required-tag"] ?? false,
     editors_pick: fields["is-editor-s-pick"] ?? false,
+    is_live: true,
     webflow_last_updated: item.lastUpdated
   };
 }

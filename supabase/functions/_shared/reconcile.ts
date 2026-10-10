@@ -41,8 +41,47 @@ export type ReconcileOptions = {
   now?: () => string;
 };
 
-function changed(item: WebflowItem, existing: ReadonlyMap<string, string | null>): boolean {
-  return existing.get(item.id) !== item.lastUpdated;
+// PostgREST returns timestamptz as `...+00:00`, Webflow as `...Z`; compare
+// instants, not strings, or every row looks changed on every run.
+const toEpoch = (value: string | null | undefined): number => (value ? Date.parse(value) : Number.NaN);
+
+export function changed(item: WebflowItem, existing: ReadonlyMap<string, string | null>): boolean {
+  return toEpoch(existing.get(item.id)) !== toEpoch(item.lastUpdated);
+}
+
+export type PresencePlan = {
+  toHide: string[];
+  toRevive: string[];
+  skipped: boolean;
+  reason?: string;
+};
+
+// Never hide more than this share of rows in one run: a short Webflow page
+// must not blank the app. Reviving is additive and always safe.
+export const PRESENCE_GUARD_MIN = 25;
+export const PRESENCE_GUARD_SHARE = 0.1;
+
+// The live set from Webflow is the truth for events: absent → not live,
+// present again → live (an unpublish + re-publish without edits leaves
+// lastUpdated untouched, so the upsert path alone would never revive it).
+export function planPresence(existing: readonly ExistingRow[], liveIds: ReadonlySet<string>): PresencePlan {
+  if (liveIds.size === 0) {
+    return { toHide: [], toRevive: [], skipped: true, reason: "empty live set" };
+  }
+
+  const toHide = existing
+    .filter((row) => row.is_live !== false && !liveIds.has(row.webflow_item_id))
+    .map((row) => row.webflow_item_id);
+  const toRevive = existing
+    .filter((row) => row.is_live === false && liveIds.has(row.webflow_item_id))
+    .map((row) => row.webflow_item_id);
+  const limit = Math.max(PRESENCE_GUARD_MIN, Math.floor(existing.length * PRESENCE_GUARD_SHARE));
+
+  if (toHide.length > limit) {
+    return { toHide: [], toRevive, skipped: true, reason: `hide count ${toHide.length} exceeds guard ${limit}` };
+  }
+
+  return { toHide, toRevive, skipped: false };
 }
 
 async function reconcileLocations(rawItems: readonly WebflowItem[], options: ReconcileOptions): Promise<ReconcileResult<LocationRow>> {
