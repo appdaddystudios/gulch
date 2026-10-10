@@ -26,12 +26,15 @@ type FakeUpdateBuilder = {
   }>;
 };
 
+type FakeSelectBuilder = {
+  readonly eq: (column: string, value: boolean) => FakeSelectBuilder;
+  readonly in: (column: string, values: readonly string[]) => FakeFilterBuilder;
+  readonly not: (column: string, operator: string, value: null) => FakeFilterBuilder;
+};
+
 type FakeSupabase = {
   readonly from: (table: "events") => {
-    readonly select: (columns: string) => {
-      readonly in: (column: string, values: readonly string[]) => FakeFilterBuilder;
-      readonly not: (column: string, operator: string, value: null) => FakeFilterBuilder;
-    };
+    readonly select: (columns: string) => FakeSelectBuilder;
     readonly update: (values: unknown) => FakeUpdateBuilder;
   };
   readonly storage: {
@@ -114,16 +117,23 @@ beforeEach(() => {
   });
   fakeSupabase = {
     from: () => ({
-      select: () => ({
-        in: (column, values) => {
-          selectedFilters.push(`${column}:${values.join(",")}`);
-          return pagedBuilder(selectPages);
-        },
-        not: (column, operator, value) => {
-          selectedFilters.push(`${column}:${operator}:${String(value)}`);
-          return pagedBuilder(refreshPages);
-        }
-      }),
+      select: () => {
+        const builder: FakeSelectBuilder = {
+          eq: (column, value) => {
+            selectedFilters.push(`${column}:eq:${String(value)}`);
+            return builder;
+          },
+          in: (column, values) => {
+            selectedFilters.push(`${column}:${values.join(",")}`);
+            return pagedBuilder(selectPages);
+          },
+          not: (column, operator, value) => {
+            selectedFilters.push(`${column}:${operator}:${String(value)}`);
+            return pagedBuilder(refreshPages);
+          }
+        };
+        return builder;
+      },
       update: (values) => updateBuilder(values, [])
     }),
     storage: {
@@ -219,7 +229,9 @@ describe("images CLI adapters", () => {
       storage.uploadEventImage("non-ig-event", new Uint8Array([1]), "image/jpeg", "abcdef1234567890")
     ).resolves.toBe("https://cdn.test/events/non-ig-event-abcdef12.jpg");
 
-    expect(selectedFilters).toEqual(["image_status:pending,failed"]);
+    // Hidden events are never drained: a failed image on an unpublished
+    // event would otherwise be retried every run forever.
+    expect(selectedFilters).toEqual(["is_live:eq:true", "image_status:pending,failed"]);
     expect(updates).toEqual([
       {
         values: {
@@ -296,7 +308,12 @@ describe("images CLI adapters", () => {
       [0, 999],
       [1000, 1999]
     ]);
-    expect(selectedFilters).toEqual(["image_status:pending,failed", "image_status:pending,failed"]);
+    expect(selectedFilters).toEqual([
+      "is_live:eq:true",
+      "image_status:pending,failed",
+      "is_live:eq:true",
+      "image_status:pending,failed"
+    ]);
   });
 
   it("selects all events when refresh is enabled and runs main without hitting Instagram for non-IG events", async () => {
@@ -314,7 +331,12 @@ describe("images CLI adapters", () => {
     await expect(createImagesDbClient(fakeSupabase).selectPendingEvents(true)).resolves.toEqual([]);
     await main();
 
-    expect(selectedFilters).toEqual(["webflow_item_id:is:null", "image_status:pending,failed"]);
+    expect(selectedFilters).toEqual([
+      "is_live:eq:true",
+      "webflow_item_id:is:null",
+      "is_live:eq:true",
+      "image_status:pending,failed"
+    ]);
     expect(JSON.parse(logs[0] ?? "{}")).toEqual({
       scanned: 1,
       fetched: 0,

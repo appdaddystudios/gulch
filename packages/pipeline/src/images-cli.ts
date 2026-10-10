@@ -34,12 +34,15 @@ type ImagesUpdateBuilder = {
   }>;
 };
 
+type ImagesSelectBuilder = {
+  readonly eq: (column: "is_live", value: true) => ImagesSelectBuilder;
+  readonly in: (column: "image_status", values: readonly ["pending", "failed"]) => ImagesFilterBuilder;
+  readonly not: (column: "webflow_item_id", operator: "is", value: null) => ImagesFilterBuilder;
+};
+
 type SupabaseImagesClient = {
   readonly from: (table: "events") => {
-    readonly select: (columns: "webflow_item_id,external_link,image_checksum,image_status,is_video") => {
-      readonly in: (column: "image_status", values: readonly ["pending", "failed"]) => ImagesFilterBuilder;
-      readonly not: (column: "webflow_item_id", operator: "is", value: null) => ImagesFilterBuilder;
-    };
+    readonly select: (columns: "webflow_item_id,external_link,image_checksum,image_status,is_video") => ImagesSelectBuilder;
     readonly update: (values: EventImageUpdate) => ImagesUpdateBuilder;
   };
   readonly storage: {
@@ -106,10 +109,15 @@ export function createImagesDbClient(supabase: SupabaseImagesClient): ImagesDbCl
       const events: ImagesEvent[] = [];
 
       for (let from = 0; ; from += selectPageSize) {
-        const query = supabase.from("events").select("webflow_item_id,external_link,image_checksum,image_status,is_video");
+        // Hidden events are never drained: Home does not show them, and a
+        // failed image on an unpublished event would be retried forever.
+        const live = supabase
+          .from("events")
+          .select("webflow_item_id,external_link,image_checksum,image_status,is_video")
+          .eq("is_live", true);
         const filtered = refresh
-          ? query.not("webflow_item_id", "is", null)
-          : query.in("image_status", ["pending", "failed"]);
+          ? live.not("webflow_item_id", "is", null)
+          : live.in("image_status", ["pending", "failed"]);
         const result = await filtered.order("webflow_item_id", { ascending: true }).range(from, from + selectPageSize - 1);
 
         if (result.error) {
