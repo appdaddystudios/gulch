@@ -58,8 +58,9 @@ export type PresencePlan = {
   reason?: string;
 };
 
-// Never hide more than this share of rows in one run: a short Webflow page
-// must not blank the app. Reviving is additive and always safe.
+// Never hide more than this share of rows in one run, an empty live set
+// included: a short or empty Webflow response can cost at most one batch,
+// and reviving is unguarded so the next good run restores it.
 export const PRESENCE_GUARD_MIN = 25;
 export const PRESENCE_GUARD_SHARE = 0.1;
 
@@ -67,10 +68,6 @@ export const PRESENCE_GUARD_SHARE = 0.1;
 // present again → live (an unpublish + re-publish without edits leaves
 // lastUpdated untouched, so the upsert path alone would never revive it).
 export function planPresence(existing: readonly ExistingRow[], liveIds: ReadonlySet<string>): PresencePlan {
-  if (liveIds.size === 0) {
-    return { toHide: [], toRevive: [], deferred: 0, skipped: true, reason: "empty live set" };
-  }
-
   const toHide = existing
     .filter((row) => row.is_live !== false && !liveIds.has(row.webflow_item_id))
     .map((row) => row.webflow_item_id);

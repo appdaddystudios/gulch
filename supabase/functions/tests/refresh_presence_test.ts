@@ -97,10 +97,16 @@ Deno.test("planPresence hides absent rows, revives present ones, and leaves rows
   assertEquals(plan, { toHide: ["gone"], toRevive: ["back"], deferred: 0, skipped: false });
 });
 
-Deno.test("planPresence skips everything on an empty live set", () => {
-  const plan = planPresence([existingEvent("a"), existingEvent("b")], new Set());
-  assertEquals(plan.skipped, true);
-  assertEquals(plan.toHide, []);
+// An empty live set is a snapshot like any other: one guarded batch per run.
+// If it is a Webflow anomaly the next good run revives the batch; if it is
+// real, repeated runs converge instead of leaving rows visible forever.
+Deno.test("planPresence treats an empty live set as one guarded batch with the rest deferred", () => {
+  const existing = Array.from({ length: PRESENCE_GUARD_MIN + 3 }, (_, i) => existingEvent(`row-${i}`));
+  const plan = planPresence(existing, new Set());
+
+  assertEquals(plan.skipped, false);
+  assertEquals(plan.toHide.length, PRESENCE_GUARD_MIN);
+  assertEquals(plan.deferred, 3);
   assertEquals(plan.toRevive, []);
 });
 
@@ -232,8 +238,8 @@ Deno.test("refresh re-reads the events it inserted and hides those unpublished m
   assertEquals(summary.eventWrites, { inserted: 2, updated: 0, stale: 0, hiddenAfterInsert: 1 });
 });
 
-Deno.test("refresh reports a skipped presence pass instead of blanking the app on an empty live set", async () => {
-  const liveCalls: unknown[] = [];
+Deno.test("refresh hides one guarded batch on an empty live set instead of skipping it forever", async () => {
+  const liveCalls: { ids: readonly string[]; isLive: boolean }[] = [];
   const handler = createRefreshHandler(refreshDeps({
     loadExisting: async (table) => (table === "events" ? [existingEvent("a"), existingEvent("b")] : []),
     setEventsLive: async (ids, isLive) => {
@@ -244,8 +250,8 @@ Deno.test("refresh reports a skipped presence pass instead of blanking the app o
 
   const summary = await (await handler(refreshRequest())).json();
 
-  assertEquals(liveCalls, []);
-  assertEquals(summary.presence, { hidden: 0, revived: 0, deferred: 0, skipped: true, reason: "empty live set" });
+  assertEquals(liveCalls, [{ ids: ["a", "b"], isLive: false }]);
+  assertEquals(summary.presence, { hidden: 2, revived: 0, deferred: 0, skipped: false });
 });
 
 Deno.test("runRefresh records a sync run start and a successful finish with the summary", async () => {
@@ -263,7 +269,7 @@ Deno.test("runRefresh records a sync run start and a successful finish with the 
   const summary = await runRefresh(refreshDeps({ syncRuns }), "manual");
 
   assertEquals(calls, [{ start: "manual" }, { finish: 7, ok: true }]);
-  assertEquals(summary.presence.skipped, true);
+  assertEquals(summary.presence, { hidden: 0, revived: 0, deferred: 0, skipped: false });
   assertEquals(summary.eventWrites, { inserted: 0, updated: 0, stale: 0, hiddenAfterInsert: 0 });
 });
 
