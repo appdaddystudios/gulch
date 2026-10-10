@@ -265,9 +265,15 @@ async function applyPresence(
     : { hidden: hidden.updated, revived: revived.updated, deferred: plan.deferred, skipped: false };
 }
 
-export async function runRefresh(deps: RefreshDeps, source: RefreshSource): Promise<RefreshSummary> {
+// claimedRunId: a sync_runs row already inserted by an atomic claim (see
+// claimSyncRun); the run then finishes that row instead of starting another.
+export async function runRefresh(
+  deps: RefreshDeps,
+  source: RefreshSource,
+  claimedRunId?: number | null
+): Promise<RefreshSummary> {
   const syncRuns = deps.syncRuns ?? defaultSyncRuns;
-  const runId = await syncRuns.start(source);
+  const runId = claimedRunId ?? await syncRuns.start(source);
   try {
     const summary = await reconcileAll(deps);
     await syncRuns.finish(runId, { ok: true, summary });

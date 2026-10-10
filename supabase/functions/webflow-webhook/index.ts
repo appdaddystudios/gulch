@@ -2,8 +2,8 @@ import { z } from "npm:zod";
 import { constantTimeEqual, jsonResponse, verifyHmacSha256 } from "../_shared/auth.ts";
 import {
   applyEventRows,
+  claimSyncRun,
   createServiceClient,
-  lastSyncRunStartedAt,
   loadEventImageState,
   loadKnownOrganizerIds,
   replaceEventOrganizers,
@@ -54,9 +54,9 @@ export type WebhookDeps = {
   setEventsLive?: SetEventsLiveFn;
   // Background work (full reconcile, hero image) runs after the response.
   waitUntil?: (promise: Promise<unknown>) => void;
-  runRefresh?: (source: "site_publish") => Promise<RefreshSummary>;
+  runRefresh?: (source: "site_publish", runId: number) => Promise<RefreshSummary>;
   refreshDeps?: RefreshDeps;
-  lastSiteRefreshStartedAt?: () => Promise<string | null>;
+  claimSyncRun?: (source: "site_publish", debounceMs: number) => Promise<number | null>;
   loadEventImageState?: (eventId: string) => Promise<EventImageState | null>;
   applyEventRows?: ApplyEventRowsFn;
   fetchHeroImage?: (eventId: string, externalLink: string | null) => Promise<HeroImageOutcome>;
@@ -148,9 +148,10 @@ function resolveDeps(deps: WebhookDeps) {
       ((ids: readonly string[], isLive: boolean, observedAt: string) =>
         setEventsLive(createServiceClient(), ids, isLive, observedAt)),
     waitUntil: deps.waitUntil ?? defaultWaitUntil,
-    runRefresh: deps.runRefresh ?? ((source: "site_publish") => runRefresh(deps.refreshDeps ?? { env, fetcher }, source)),
-    lastSiteRefreshStartedAt: deps.lastSiteRefreshStartedAt ??
-      (() => lastSyncRunStartedAt(createServiceClient(), "site_publish")),
+    runRefresh: deps.runRefresh ??
+      ((source: "site_publish", runId: number) => runRefresh(deps.refreshDeps ?? { env, fetcher }, source, runId)),
+    claimSyncRun: deps.claimSyncRun ??
+      ((source: "site_publish", debounceMs: number) => claimSyncRun(createServiceClient(), source, debounceMs)),
     loadEventImageState: deps.loadEventImageState ??
       ((eventId: string) => loadEventImageState(createServiceClient(), eventId)),
     applyEventRows: deps.applyEventRows ??
@@ -247,13 +248,14 @@ async function hideItem(d: Resolved, table: CollectionName, collectionId: string
   return jsonResponse({ ok: true, hidden: updated });
 }
 
+// The debounce is one atomic claim in the database: the window check and
+// the sync_runs insert happen under a lock, so concurrent deliveries cannot
+// all pass a read-then-schedule. The claimed row is the run's own record.
 async function scheduleReconcile(d: Resolved): Promise<Response> {
-  const last = await d.lastSiteRefreshStartedAt();
-  if (last !== null && Date.parse(d.now()) - Date.parse(last) < SITE_PUBLISH_DEBOUNCE_MS) {
-    return jsonResponse({ ok: true, debounced: true });
-  }
-  d.waitUntil(d.runRefresh("site_publish"));
-  return jsonResponse({ ok: true, scheduled: "reconcile" });
+  const runId = await d.claimSyncRun("site_publish", SITE_PUBLISH_DEBOUNCE_MS);
+  if (runId === null) return jsonResponse({ ok: true, debounced: true });
+  d.waitUntil(d.runRefresh("site_publish", runId));
+  return jsonResponse({ ok: true, scheduled: "reconcile", run: runId });
 }
 
 export function createWebhookHandler(deps: WebhookDeps = {}): (request: Request) => Promise<Response> {

@@ -269,16 +269,17 @@ export async function finishSyncRun(client: SupabaseClient, id: number, result: 
   if (error) throw error;
 }
 
-export async function lastSyncRunStartedAt(client: SupabaseClient, source: SyncRunSource): Promise<string | null> {
-  const { data, error } = await client
-    .from("sync_runs")
-    .select("started_at")
-    .eq("source", source)
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+// Atomic debounce claim (migration 20261010000015): the window check and
+// the sync_runs insert happen under one advisory lock. Returns the run id,
+// or null when a run for this source started inside the window.
+export async function claimSyncRun(
+  client: SupabaseClient,
+  source: SyncRunSource,
+  debounceMs: number
+): Promise<number | null> {
+  const { data, error } = await client.rpc("claim_sync_run", { p_source: source, p_debounce_ms: debounceMs });
   if (error) throw error;
-  return (data as { started_at: string } | null)?.started_at ?? null;
+  return typeof data === "number" ? data : null;
 }
 
 export async function loadEventImageState(client: SupabaseClient, eventId: string): Promise<EventImageState | null> {

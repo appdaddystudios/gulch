@@ -62,11 +62,11 @@ function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
     waitUntil: (promise) => {
       rec.background.push(promise);
     },
-    runRefresh: async (source) => {
-      rec.refreshes.push(source);
+    runRefresh: async (source, runId) => {
+      rec.refreshes.push(`${source}#${runId}`);
       return {} as never;
     },
-    lastSiteRefreshStartedAt: async () => null,
+    claimSyncRun: async () => 1,
     loadEventImageState: async () => ({ image_status: "pending", external_link: eventItem.fieldData["external-link"] }),
     fetchHeroImage: async (eventId, link) => {
       rec.heroFetches.push({ eventId, link });
@@ -331,27 +331,32 @@ Deno.test("site_publish schedules a full reconcile in the background and respond
     payload: { siteId: "site-1", publishedOn: NOW, domains: ["gulchmagazine.com"] }
   }));
 
-  assertEquals(await response.json(), { ok: true, scheduled: "reconcile" });
+  assertEquals(await response.json(), { ok: true, scheduled: "reconcile", run: 1 });
   assertEquals(rec.background.length, 1);
   await Promise.all(rec.background);
-  assertEquals(rec.refreshes, ["site_publish"]);
+  assertEquals(rec.refreshes, ["site_publish#1"]);
 });
 
-Deno.test("site_publish is debounced inside the window and runs again outside it", async () => {
-  const insideWindow = new Date(Date.parse(NOW) - SITE_PUBLISH_DEBOUNCE_MS + 1000).toISOString();
-  const outsideWindow = new Date(Date.parse(NOW) - SITE_PUBLISH_DEBOUNCE_MS - 1000).toISOString();
+// The debounce is a single atomic claim in the database (claim_sync_run):
+// the window check and the sync_runs insert happen under one lock, so
+// concurrent site_publish deliveries cannot all pass a read-then-schedule.
+Deno.test("site_publish is debounced when the claim is refused and runs under the claimed run id when granted", async () => {
+  const claims: { source: string; debounceMs: number }[] = [];
 
-  const inside = record();
-  const debounced = await handlerWith(inside, { lastSiteRefreshStartedAt: async () => insideWindow })(
-    post({ triggerType: "site_publish", payload: {} })
-  );
+  const refused = record();
+  const debounced = await handlerWith(refused, {
+    claimSyncRun: async (source, debounceMs) => {
+      claims.push({ source, debounceMs });
+      return null;
+    }
+  })(post({ triggerType: "site_publish", payload: {} }));
   assertEquals(await debounced.json(), { ok: true, debounced: true });
-  assertEquals(inside.refreshes, []);
+  assertEquals(refused.background.length, 0);
+  assertEquals(refused.refreshes, []);
+  assertEquals(claims, [{ source: "site_publish", debounceMs: SITE_PUBLISH_DEBOUNCE_MS }]);
 
-  const outside = record();
-  await handlerWith(outside, { lastSiteRefreshStartedAt: async () => outsideWindow })(
-    post({ triggerType: "site_publish", payload: {} })
-  );
-  await Promise.all(outside.background);
-  assertEquals(outside.refreshes, ["site_publish"]);
+  const granted = record();
+  await handlerWith(granted, { claimSyncRun: async () => 42 })(post({ triggerType: "site_publish", payload: {} }));
+  await Promise.all(granted.background);
+  assertEquals(granted.refreshes, ["site_publish#42"]);
 });

@@ -267,6 +267,23 @@ Deno.test("runRefresh records a sync run start and a successful finish with the 
   assertEquals(summary.eventWrites, { inserted: 0, updated: 0, stale: 0, hiddenAfterInsert: 0 });
 });
 
+Deno.test("runRefresh finishes an already-claimed run instead of starting a second one", async () => {
+  const calls: unknown[] = [];
+  const syncRuns: SyncRunsStore = {
+    start: async (source) => {
+      calls.push({ start: source });
+      return 9;
+    },
+    finish: async (id, result) => {
+      calls.push({ finish: id, ok: result.ok });
+    }
+  };
+
+  await runRefresh(refreshDeps({ syncRuns }), "site_publish", 42);
+
+  assertEquals(calls, [{ finish: 42, ok: true }]);
+});
+
 Deno.test("runRefresh records a failed finish with the error and rethrows", async () => {
   const calls: unknown[] = [];
   const syncRuns: SyncRunsStore = {
