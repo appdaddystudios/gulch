@@ -29,7 +29,7 @@ type Recorder = {
   upserts: { table: string; rows: readonly Record<string, unknown>[] }[];
   writes: { rows: readonly Record<string, unknown>[]; observedAt: string; pendingIds: string[] }[];
   liveCalls: { ids: readonly string[]; isLive: boolean; observedAt: string }[];
-  orgReplacements: string[];
+  orgReplacements: { eventId: string; observedAt: string }[];
   background: Promise<unknown>[];
   refreshes: string[];
   heroFetches: { eventId: string; link: string | null }[];
@@ -49,11 +49,11 @@ function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
     },
     applyEventRows: async (rows, observedAt, pendingIds) => {
       rec.writes.push({ rows: rows as readonly Record<string, unknown>[], observedAt, pendingIds: [...pendingIds] });
-      return { inserted: 0, updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
     },
-    replaceEventOrganizers: async (eventId) => {
-      rec.orgReplacements.push(eventId);
-      return { inserted: 0, skipped: 0 };
+    replaceEventOrganizers: async (eventId, _rows, _known, observedAt) => {
+      rec.orgReplacements.push({ eventId, observedAt });
+      return { inserted: 0, skipped: 0, applied: true };
     },
     setEventsLive: async (ids, isLive, observedAt) => {
       rec.liveCalls.push({ ids, isLive, observedAt });
@@ -101,7 +101,7 @@ Deno.test("published event is written live, stamped with the time taken before t
   assertEquals(rec.writes[0]?.observedAt, NOW);
   assertEquals(rec.writes[0]?.rows[0]?.is_live, true);
   assertEquals(rec.writes[0]?.pendingIds, []);
-  assertEquals(rec.orgReplacements, ["event-123"]);
+  assertEquals(rec.orgReplacements, [{ eventId: "event-123", observedAt: NOW }]);
   assertEquals(rec.upserts, []);
   await Promise.all(rec.background);
   assertEquals(rec.heroFetches, [{ eventId: "event-123", link: "https://www.instagram.com/p/abc/" }]);
@@ -157,7 +157,7 @@ Deno.test("brand-new event with no row yet is inserted and fetches its hero imag
     loadEventImageState: async () => null,
     applyEventRows: async (rows, observedAt, pendingIds) => {
       rec.writes.push({ rows: rows as readonly Record<string, unknown>[], observedAt, pendingIds: [...pendingIds] });
-      return { inserted: 1, updated: 0, stale: 0, pendingMarked: 0 };
+      return { insertedIds: ["event-123"], updated: 0, stale: 0, pendingMarked: 0 };
     }
   })(post({ triggerType: "collection_item_created", payload: { collectionId: EVENTS, id: "event-123" } }));
 
@@ -178,7 +178,7 @@ Deno.test("brand-new event unpublished before its insert landed is hidden right 
     now: () => (clock++ === 0 ? NOW : LATER),
     loadEventImageState: async () => null,
     fetchLiveItemFn: async () => (++fetches === 1 ? eventItem : null),
-    applyEventRows: async () => ({ inserted: 1, updated: 0, stale: 0, pendingMarked: 0 })
+    applyEventRows: async () => ({ insertedIds: ["event-123"], updated: 0, stale: 0, pendingMarked: 0 })
   })(publishEvent());
 
   assertEquals(await response.json(), { ok: true, hidden: 1 });
@@ -218,12 +218,26 @@ Deno.test("re-published event with an unchanged link and a failed image is left 
 Deno.test("publish whose observation lost to a newer write stops without touching organizers or the image", async () => {
   const rec = record();
   const response = await handlerWith(rec, {
-    applyEventRows: async () => ({ inserted: 0, updated: 0, stale: 1, pendingMarked: 0 }),
+    applyEventRows: async () => ({ insertedIds: [], updated: 0, stale: 1, pendingMarked: 0 }),
     loadEventImageState: async () => ({ image_status: "ok", external_link: "https://www.instagram.com/p/old/" })
   })(publishEvent());
 
   assertEquals(await response.json(), { ok: true, stale: true });
   assertEquals(rec.orgReplacements, []);
+  assertEquals(rec.background.length, 0);
+  assertEquals(rec.heroFetches, []);
+});
+
+// The organizer replacement runs inside the database against the row's
+// current observation. If a newer write landed between the row write and
+// the replacement, the replacement is refused and this handler is stale.
+Deno.test("organizer replacement refused by a newer observation ends the handler as stale", async () => {
+  const rec = record();
+  const response = await handlerWith(rec, {
+    replaceEventOrganizers: async () => ({ inserted: 0, skipped: 0, applied: false })
+  })(publishEvent());
+
+  assertEquals(await response.json(), { ok: true, stale: true });
   assertEquals(rec.background.length, 0);
   assertEquals(rec.heroFetches, []);
 });

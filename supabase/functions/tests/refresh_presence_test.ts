@@ -34,7 +34,8 @@ function refreshDeps(overrides: RefreshDeps = {}): RefreshDeps {
     geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
     upsert: async () => {},
     applyEventRows: async (rows, _observedAt, pendingIds) =>
-      ({ inserted: rows.length, updated: 0, stale: 0, pendingMarked: pendingIds.size }),
+      ({ insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: pendingIds.size }),
+    fetchItem: async (_token, _collectionId, itemId) => eventItem(itemId),
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
     loadEventIdsObservedAfter: async () => [],
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
@@ -150,7 +151,7 @@ Deno.test("refresh takes its observation time once, before any Webflow fetch, an
     },
     applyEventRows: async (rows, observedAt, pendingIds) => {
       observedAts.push(observedAt);
-      return { inserted: rows.length, updated: 0, stale: 0, pendingMarked: pendingIds.size };
+      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: pendingIds.size };
     },
     setEventsLive: async (ids, _isLive, observedAt) => {
       observedAts.push(observedAt);
@@ -171,13 +172,41 @@ Deno.test("refresh reports event writes that lost to a newer observation instead
       collectionId === EVENTS
         ? [eventItem("edited", "2026-06-02T00:00:00.000Z"), eventItem("raced", "2026-06-02T00:00:00.000Z"), eventItem("brand-new")]
         : [],
-    applyEventRows: async (rows) => ({ inserted: 1, updated: rows.length - 2, stale: 1, pendingMarked: 0 })
+    applyEventRows: async (rows) => ({ insertedIds: ["brand-new"], updated: rows.length - 2, stale: 1, pendingMarked: 0 })
   }));
 
   const summary = await (await handler(refreshRequest())).json();
 
-  assertEquals(summary.eventWrites, { inserted: 1, updated: 1, stale: 1 });
+  assertEquals(summary.eventWrites, { inserted: 1, updated: 1, stale: 1, hiddenAfterInsert: 0 });
   assertEquals(summary.events.upserted, 3);
+});
+
+// Same gap as the webhook insert: a row the run inserts carried no
+// observation an earlier unpublish could have beaten. Re-read each inserted
+// item once with a fresh observation and hide it if it is already gone.
+Deno.test("refresh re-reads the events it inserted and hides those unpublished meanwhile", async () => {
+  let clock = 0;
+  const liveCalls: { ids: readonly string[]; isLive: boolean; observedAt: string }[] = [];
+  const reads: string[] = [];
+  const handler = createRefreshHandler(refreshDeps({
+    now: () => (clock++ === 0 ? NOW : LATER),
+    fetchItems: async (_token, collectionId) => (collectionId === EVENTS ? [eventItem("fresh"), eventItem("kept")] : []),
+    applyEventRows: async () => ({ insertedIds: ["fresh", "kept"], updated: 0, stale: 0, pendingMarked: 0 }),
+    fetchItem: async (_token, _collectionId, itemId) => {
+      reads.push(itemId);
+      return itemId === "fresh" ? null : eventItem(itemId);
+    },
+    setEventsLive: async (ids, isLive, observedAt) => {
+      liveCalls.push({ ids, isLive, observedAt });
+      return { updated: ids.length };
+    }
+  }));
+
+  const summary = await (await handler(refreshRequest())).json();
+
+  assertEquals(reads, ["fresh", "kept"]);
+  assertEquals(liveCalls, [{ ids: ["fresh"], isLive: false, observedAt: LATER }]);
+  assertEquals(summary.eventWrites, { inserted: 2, updated: 0, stale: 0, hiddenAfterInsert: 1 });
 });
 
 Deno.test("refresh reports a skipped presence pass instead of blanking the app on an empty live set", async () => {
@@ -212,7 +241,7 @@ Deno.test("runRefresh records a sync run start and a successful finish with the 
 
   assertEquals(calls, [{ start: "manual" }, { finish: 7, ok: true }]);
   assertEquals(summary.presence.skipped, true);
-  assertEquals(summary.eventWrites, { inserted: 0, updated: 0, stale: 0 });
+  assertEquals(summary.eventWrites, { inserted: 0, updated: 0, stale: 0, hiddenAfterInsert: 0 });
 });
 
 Deno.test("runRefresh records a failed finish with the error and rethrows", async () => {

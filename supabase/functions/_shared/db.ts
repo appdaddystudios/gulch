@@ -57,15 +57,32 @@ export async function upsertRows(client: SupabaseClient, table: TableName, rows:
   if (error) throw error;
 }
 
+// PostgREST caps a response at max_rows (1000 in supabase/config.toml) and
+// the events table is past that: every whole-table read pages.
+export const SELECT_PAGE_SIZE = 1000;
+
+async function selectAllRows<T>(client: SupabaseClient, table: TableName, columns: string): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; ; from += SELECT_PAGE_SIZE) {
+    const { data, error } = await client
+      .from(table)
+      .select(columns)
+      .order("webflow_item_id", { ascending: true })
+      .range(from, from + SELECT_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as T[];
+    all.push(...page);
+    if (page.length < SELECT_PAGE_SIZE) return all;
+  }
+}
+
 export async function loadExistingRows(client: SupabaseClient, table: CollectionName): Promise<ExistingRow[]> {
   const columns = table === "locations"
     ? "webflow_item_id,webflow_last_updated,name_address,latitude,longitude,geocode_status,geocoded_at,managing_organizer_id"
     : table === "events"
       ? "webflow_item_id,webflow_last_updated,external_link,is_live"
     : "webflow_item_id,webflow_last_updated";
-  const { data, error } = await client.from(table).select(columns);
-  if (error) throw error;
-  return (data ?? []) as unknown as ExistingRow[];
+  return selectAllRows<ExistingRow>(client, table, columns);
 }
 
 export function existingByIdLastUpdated(rows: readonly ExistingRow[]): Map<string, string | null> {
@@ -81,28 +98,33 @@ export function existingEventById(rows: readonly ExistingRow[]): Map<string, Exi
 }
 
 export async function loadKnownOrganizerIds(client: SupabaseClient): Promise<Set<string>> {
-  const { data, error } = await client.from("organizers").select("webflow_item_id");
-  if (error) throw error;
-  const rows = (data ?? []) as unknown as { webflow_item_id: string }[];
+  const rows = await selectAllRows<{ webflow_item_id: string }>(client, "organizers", "webflow_item_id");
   return new Set(rows.map((row) => row.webflow_item_id));
 }
 
+// Runs inside the database (migration 20261010000013): the events row is
+// locked, its observed_at must still equal this handler's observation, and
+// only then are the junction rows replaced. applied = false means a newer
+// observation landed first and this handler's organizer set is stale.
 export async function replaceEventOrganizers(
   client: SupabaseClient,
   eventId: string,
   rows: readonly EventOrganizerRow[],
-  knownOrganizerIds: ReadonlySet<string>
-): Promise<{ inserted: number; skipped: number }> {
-  const { error: deleteError } = await client.from("event_organizers").delete().eq("event_id", eventId);
-  if (deleteError) throw deleteError;
-
+  knownOrganizerIds: ReadonlySet<string>,
+  observedAt: string
+): Promise<{ inserted: number; skipped: number; applied: boolean }> {
   const guardedRows = rows.filter((row) => row.event_id === eventId && knownOrganizerIds.has(row.organizer_id));
   const skipped = rows.length - guardedRows.length;
-  if (guardedRows.length === 0) return { inserted: 0, skipped };
 
-  const { error: insertError } = await client.from("event_organizers").insert(guardedRows);
-  if (insertError) throw insertError;
-  return { inserted: guardedRows.length, skipped };
+  const { data, error } = await client.rpc("replace_event_organizers_if_observed", {
+    p_event_id: eventId,
+    p_organizer_ids: guardedRows.map((row) => row.organizer_id),
+    p_observed_at: observedAt
+  });
+  if (error) throw error;
+
+  const applied = data === true;
+  return { inserted: applied ? guardedRows.length : 0, skipped, applied };
 }
 
 // keepEventIds: events a webhook observed after the calling run started.
@@ -183,7 +205,12 @@ export async function loadEventIdsObservedAfter(client: SupabaseClient, observed
   return ((data ?? []) as { webflow_item_id: string }[]).map((row) => row.webflow_item_id);
 }
 
-export type EventWriteResult = { inserted: number; updated: number; stale: number; pendingMarked: number };
+export type EventWriteResult = {
+  insertedIds: readonly string[];
+  updated: number;
+  stale: number;
+  pendingMarked: number;
+};
 
 // New rows are inserted as observed (a row that appears meanwhile wins by
 // being first). Existing rows take a conditional update; ids in pendingIds
@@ -221,7 +248,7 @@ export async function applyEventRows(
     if (markPending) pendingMarked += 1;
   }
 
-  return { inserted: insertedIds.size, updated, stale, pendingMarked };
+  return { insertedIds: [...insertedIds], updated, stale, pendingMarked };
 }
 
 async function insertEventsIfAbsent(

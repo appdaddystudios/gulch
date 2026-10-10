@@ -33,8 +33,9 @@ type UpsertFn = (table: TableName, rows: readonly UpsertRow[]) => Promise<void>;
 type ReplaceEventOrganizersFn = (
   eventId: string,
   rows: readonly EventOrganizerRow[],
-  knownOrganizerIds: ReadonlySet<string>
-) => Promise<{ inserted: number; skipped: number }>;
+  knownOrganizerIds: ReadonlySet<string>,
+  observedAt: string
+) => Promise<{ inserted: number; skipped: number; applied: boolean }>;
 type SetEventsLiveFn = (ids: readonly string[], isLive: boolean, observedAt: string) => Promise<{ updated: number }>;
 type ApplyEventRowsFn = (
   rows: readonly EventRow[],
@@ -141,8 +142,8 @@ function resolveDeps(deps: WebhookDeps) {
     upsert: deps.upsert ?? ((table: TableName, rows: readonly UpsertRow[]) => upsertRows(createServiceClient(), table, rows)),
     loadOrganizerIds: deps.loadKnownOrganizerIds ?? (() => loadKnownOrganizerIds(createServiceClient())),
     replaceEventOrgs: deps.replaceEventOrganizers ??
-      ((eventId: string, rows: readonly EventOrganizerRow[], known: ReadonlySet<string>) =>
-        replaceEventOrganizers(createServiceClient(), eventId, rows, known)),
+      ((eventId: string, rows: readonly EventOrganizerRow[], known: ReadonlySet<string>, observedAt: string) =>
+        replaceEventOrganizers(createServiceClient(), eventId, rows, known, observedAt)),
     setEventsLive: deps.setEventsLive ??
       ((ids: readonly string[], isLive: boolean, observedAt: string) =>
         setEventsLive(createServiceClient(), ids, isLive, observedAt)),
@@ -205,11 +206,14 @@ async function applyEventItem(
 
   const write = await d.applyEventRows([row], observedAt, pendingIds);
   if (write.stale > 0) return jsonResponse({ ok: true, stale: true });
-  if (write.inserted > 0 && await goneSinceInsert(d, source, row.webflow_item_id)) {
+  if (write.insertedIds.length > 0 && await goneSinceInsert(d, source, row.webflow_item_id)) {
     return jsonResponse({ ok: true, hidden: 1 });
   }
 
-  await d.replaceEventOrgs(item.id, deriveEventOrganizers(item), knownOrganizerIds);
+  // Replaced inside the database against the row's current observation; a
+  // refusal means a newer write landed since ours, so we are stale after all.
+  const organizers = await d.replaceEventOrgs(item.id, deriveEventOrganizers(item), knownOrganizerIds, observedAt);
+  if (!organizers.applied) return jsonResponse({ ok: true, stale: true });
   // Home hides events without an image and the images job runs only every
   // 6 h: fetch now when the row is new, still pending, or its link changed.
   const needsFetch = before === null || before.image_status === "pending" || linkChanged;

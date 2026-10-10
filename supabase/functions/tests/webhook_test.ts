@@ -150,7 +150,7 @@ Deno.test("webhook replaces event organizers for created events and skips dangli
     loadEventImageState: async () => null,
     applyEventRows: async (rows) => {
       calls.push({ table: "events", rows });
-      return { inserted: 1, updated: 0, stale: 0, pendingMarked: 0 };
+      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: 0 };
     },
     fetchHeroImage: async () => "unavailable",
     waitUntil: () => {},
@@ -162,7 +162,7 @@ Deno.test("webhook replaces event organizers for created events and skips dangli
         eventId,
         rows: rows.filter((row) => knownOrganizerIds.has(row.organizer_id))
       });
-      return { inserted: 1, skipped: 1 };
+      return { inserted: 1, skipped: 1, applied: true };
     }
   });
 
@@ -218,14 +218,14 @@ Deno.test("webhook-created event relies on the database default image status", a
     loadEventImageState: async () => null,
     applyEventRows: async (rows) => {
       calls.push({ table: "events", rows });
-      return { inserted: 1, updated: 0, stale: 0, pendingMarked: 0 };
+      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: 0 };
     },
     fetchHeroImage: async () => "unavailable",
     waitUntil: () => {},
     upsert: async (table, rows) => {
       calls.push({ table, rows: rows as readonly Record<string, unknown>[] });
     },
-    replaceEventOrganizers: async () => ({ inserted: 1, skipped: 1 })
+    replaceEventOrganizers: async () => ({ inserted: 1, skipped: 1, applied: true })
   });
 
   const response = await handler(new Request("https://example.test?secret=right", {

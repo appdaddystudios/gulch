@@ -32,12 +32,13 @@ import {
   type ReconcileSummary
 } from "./reconcile.ts";
 import { COLLECTIONS, type CollectionName, type WebflowItem } from "./schemas.ts";
-import { fetchLiveItems, type FetchLike } from "./webflow.ts";
+import { fetchLiveItem, fetchLiveItems, type FetchLike } from "./webflow.ts";
 
 export type RefreshSource = SyncRunSource;
 
 type ExistingLoader = (table: CollectionName) => Promise<ExistingRow[]>;
 type FetchItems = (token: string, collectionId: string) => Promise<WebflowItem[]>;
+type FetchItem = (token: string, collectionId: string, itemId: string) => Promise<WebflowItem | null>;
 type UpsertFn = (table: TableName, rows: readonly UpsertRow[]) => Promise<void>;
 type ReplaceAllEventOrganizersFn = (
   rows: readonly EventOrganizerRow[],
@@ -63,6 +64,7 @@ export type RefreshDeps = {
   env?: (key: string) => string | undefined;
   fetcher?: FetchLike;
   fetchItems?: FetchItems;
+  fetchItem?: FetchItem;
   loadExisting?: ExistingLoader;
   upsert?: UpsertFn;
   replaceAllEventOrganizers?: ReplaceAllEventOrganizersFn;
@@ -85,8 +87,9 @@ export type PresenceSummary = {
 export type RefreshSummary = Record<CollectionName, ReconcileSummary> & {
   eventOrganizers: { derived: number; replaced: number; skipped: number };
   managingRefs: { updated: number };
-  // stale = event rows whose observation lost to a newer write (see applyEventRows).
-  eventWrites: { inserted: number; updated: number; stale: number };
+  // stale = event rows whose observation lost to a newer write (see applyEventRows);
+  // hiddenAfterInsert = inserted rows found already unpublished on re-read.
+  eventWrites: { inserted: number; updated: number; stale: number; hiddenAfterInsert: number };
   imagePending: { marked: number };
   presence: PresenceSummary;
 };
@@ -140,6 +143,7 @@ function resolveDeps(deps: RefreshDeps) {
   return {
     env,
     fetchItems: deps.fetchItems ?? ((token, collectionId) => fetchLiveItems(token, collectionId, fetcher)),
+    fetchItem: deps.fetchItem ?? ((token, collectionId, itemId) => fetchLiveItem(token, collectionId, itemId, fetcher)),
     loadExisting: deps.loadExisting ?? defaultLoadExisting,
     upsert: deps.upsert ?? defaultUpsert,
     replaceAllEventOrgs: deps.replaceAllEventOrganizers ??
@@ -197,7 +201,13 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
       const eventRows = result.rows as EventRow[];
       const pendingIds = new Set(changedEventExternalLinkIds(eventRows, existingEventById(existing.events)));
       const writes = await d.applyEventRows(eventRows, observedAt, pendingIds);
-      summary.eventWrites = { inserted: writes.inserted, updated: writes.updated, stale: writes.stale };
+      const hiddenAfterInsert = await hideInsertedIfGone(d, webflowToken, writes.insertedIds);
+      summary.eventWrites = {
+        inserted: writes.insertedIds.length,
+        updated: writes.updated,
+        stale: writes.stale,
+        hiddenAfterInsert
+      };
       summary.imagePending = { marked: writes.pendingMarked };
       summary.presence = await applyPresence(existing.events, items, d.setEventsLive, observedAt);
     } else {
@@ -226,10 +236,26 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
     skipped: eventOrganizers.skipped
   };
   summary.managingRefs = { updated: managingRefs.updated };
-  summary.eventWrites ??= { inserted: 0, updated: 0, stale: 0 };
+  summary.eventWrites ??= { inserted: 0, updated: 0, stale: 0, hiddenAfterInsert: 0 };
   summary.imagePending ??= { marked: 0 };
   summary.presence ??= { hidden: 0, revived: 0, skipped: true, reason: "events not reconciled" };
   return summary;
+}
+
+type Resolved = ReturnType<typeof resolveDeps>;
+
+// A row this run inserted carried no observation an earlier unpublish could
+// have beaten (a hide that found no row left nothing behind). Re-read each
+// inserted item once, with a fresh observation, and hide it if already gone.
+async function hideInsertedIfGone(d: Resolved, token: string, insertedIds: readonly string[]): Promise<number> {
+  let hidden = 0;
+  for (const id of insertedIds) {
+    const observedAt = d.now();
+    if (await d.fetchItem(token, COLLECTIONS.events, id)) continue;
+    const { updated } = await d.setEventsLive([id], false, observedAt);
+    hidden += updated;
+  }
+  return hidden;
 }
 
 async function applyPresence(
