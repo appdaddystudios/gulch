@@ -3,7 +3,7 @@
 // reconcile behaviour lives in refresh_tick_test.ts.
 import { createRefreshHandler } from "../refresh-tick/index.ts";
 import { changed, planPresence, PRESENCE_GUARD_MIN } from "../_shared/reconcile.ts";
-import { noopSyncRuns, runRefresh, type RefreshDeps, type SyncRunsStore } from "../_shared/refresh.ts";
+import { HERO_FETCH_CAP, noopSyncRuns, runRefresh, type RefreshDeps, type SyncRunsStore } from "../_shared/refresh.ts";
 import type { ExistingRow } from "../_shared/db.ts";
 import type { WebflowItem } from "../_shared/schemas.ts";
 import { assertEquals, envelope } from "./helpers.ts";
@@ -34,8 +34,9 @@ function refreshDeps(overrides: RefreshDeps = {}): RefreshDeps {
     geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
     upsert: async () => {},
     applyEventRows: async (rows, _observedAt, pendingIds) =>
-      ({ insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: pendingIds.size }),
+      ({ insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarkedIds: [...pendingIds] }),
     fetchItem: async (_token, _collectionId, itemId) => eventItem(itemId),
+    fetchHeroImage: async () => "ok",
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
     setEventsLive: async (ids) => ({ updated: ids.length }),
@@ -184,7 +185,7 @@ Deno.test("refresh stamps its observation immediately before the events fetch an
     },
     applyEventRows: async (rows, observedAt, pendingIds) => {
       observedAts.push(observedAt);
-      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: pendingIds.size };
+      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarkedIds: [...pendingIds] };
     },
     setEventsLive: async (ids, _isLive, observedAt) => {
       observedAts.push(observedAt);
@@ -206,7 +207,7 @@ Deno.test("refresh reports event writes that lost to a newer observation instead
       collectionId === EVENTS
         ? [eventItem("edited", "2026-06-02T00:00:00.000Z"), eventItem("raced", "2026-06-02T00:00:00.000Z"), eventItem("brand-new")]
         : [],
-    applyEventRows: async (rows) => ({ insertedIds: ["brand-new"], updated: rows.length - 2, stale: 1, pendingMarked: 0 })
+    applyEventRows: async (rows) => ({ insertedIds: ["brand-new"], updated: rows.length - 2, stale: 1, pendingMarkedIds: [] })
   }));
 
   const summary = await (await handler(refreshRequest())).json();
@@ -225,7 +226,7 @@ Deno.test("refresh re-reads the events it inserted and hides those unpublished m
   const handler = createRefreshHandler(refreshDeps({
     now: () => (clock++ === 0 ? NOW : LATER),
     fetchItems: async (_token, collectionId) => (collectionId === EVENTS ? [eventItem("fresh"), eventItem("kept")] : []),
-    applyEventRows: async () => ({ insertedIds: ["fresh", "kept"], updated: 0, stale: 0, pendingMarked: 0 }),
+    applyEventRows: async () => ({ insertedIds: ["fresh", "kept"], updated: 0, stale: 0, pendingMarkedIds: [] }),
     fetchItem: async (_token, _collectionId, itemId) => {
       reads.push(itemId);
       return itemId === "fresh" ? null : eventItem(itemId);
@@ -241,6 +242,36 @@ Deno.test("refresh re-reads the events it inserted and hides those unpublished m
   assertEquals(reads, ["fresh", "kept"]);
   assertEquals(liveCalls, [{ ids: ["fresh"], isLive: false, observedAt: LATER }]);
   assertEquals(summary.eventWrites, { inserted: 2, updated: 0, stale: 0, hiddenAfterInsert: 1 });
+});
+
+// A link change the reconcile marks pending must not wait for the image
+// drain: the refresh fetches the hero itself, as the webhook path does,
+// capped per run so a bulk change cannot stall the function.
+Deno.test("refresh fetches the hero image for link-changed rows it marked pending, capped per run", async () => {
+  const fetched: { id: string; link: string | null }[] = [];
+  const count = HERO_FETCH_CAP + 1;
+  const ids = Array.from({ length: count }, (_, i) => `linked-${i}`);
+  const withLink = (id: string): WebflowItem => ({
+    ...eventItem(id, "2026-06-02T00:00:00.000Z"),
+    fieldData: { ...eventItem(id).fieldData, "external-link": `https://www.instagram.com/p/${id}/` }
+  });
+  const handler = createRefreshHandler(refreshDeps({
+    loadExisting: async (table) =>
+      table === "events" ? ids.map((id) => ({ ...existingEvent(id), external_link: "https://www.instagram.com/p/old/" })) : [],
+    fetchItems: async (_token, collectionId) => (collectionId === EVENTS ? ids.map(withLink) : []),
+    applyEventRows: async (rows, _observedAt, pendingIds) =>
+      ({ insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [...pendingIds] }),
+    fetchHeroImage: async (id, link) => {
+      fetched.push({ id, link });
+      return "ok";
+    }
+  }));
+
+  const summary = await (await handler(refreshRequest())).json();
+
+  assertEquals(fetched.length, HERO_FETCH_CAP);
+  assertEquals(fetched[0], { id: "linked-0", link: "https://www.instagram.com/p/linked-0/" });
+  assertEquals(summary.imagePending, { marked: count, fetched: HERO_FETCH_CAP });
 });
 
 Deno.test("refresh hides one guarded batch on an empty live set instead of skipping it forever", async () => {

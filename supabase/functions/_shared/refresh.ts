@@ -22,6 +22,7 @@ import {
   type TableName
 } from "./db.ts";
 import { geocode, type GeocodeResult } from "./geocode.ts";
+import { fetchHeroImage, type HeroImageOutcome } from "./images.ts";
 import { type EventOrganizerRow, type EventRow, type UpsertRow } from "./mappers.ts";
 import {
   deriveGuardedEventOrganizers,
@@ -68,8 +69,13 @@ export type RefreshDeps = {
   setEventsLive?: SetEventsLiveFn;
   syncRuns?: SyncRunsStore;
   geocoder?: (address: string | null) => Promise<GeocodeResult>;
+  fetchHeroImage?: (eventId: string, externalLink: string | null) => Promise<HeroImageOutcome>;
   now?: () => string;
 };
+
+// Heroes fetched by one reconcile for link changes it marked pending; the
+// scheduled drain picks up anything beyond this.
+export const HERO_FETCH_CAP = 20;
 
 export type PresenceSummary = {
   hidden: number;
@@ -85,7 +91,7 @@ export type RefreshSummary = Record<CollectionName, ReconcileSummary> & {
   // stale = event rows whose observation lost to a newer write (see applyEventRows);
   // hiddenAfterInsert = inserted rows found already unpublished on re-read.
   eventWrites: { inserted: number; updated: number; stale: number; hiddenAfterInsert: number };
-  imagePending: { marked: number };
+  imagePending: { marked: number; fetched: number };
   presence: PresenceSummary;
 };
 
@@ -154,6 +160,8 @@ function resolveDeps(deps: RefreshDeps) {
       ((ids: readonly string[], isLive: boolean, observedAt: string) =>
         setEventsLive(createServiceClient(), ids, isLive, observedAt)),
     geocoder: deps.geocoder ?? ((address: string | null) => geocode(env("MAPBOX_TOKEN") ?? "", address, fetcher)),
+    fetchHeroImage: deps.fetchHeroImage ??
+      ((eventId: string, externalLink: string | null) => fetchHeroImage(eventId, externalLink, { fetcher })),
     now: deps.now ?? (() => new Date().toISOString())
   };
 }
@@ -199,13 +207,14 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
       const pendingIds = new Set(changedEventExternalLinkIds(eventRows, existingEventById(existing.events)));
       const writes = await d.applyEventRows(eventRows, observedAt, pendingIds);
       const hiddenAfterInsert = await hideInsertedIfGone(d, webflowToken, writes.insertedIds);
+      const fetched = await fetchHeroesFor(d, eventRows, writes.pendingMarkedIds);
       summary.eventWrites = {
         inserted: writes.insertedIds.length,
         updated: writes.updated,
         stale: writes.stale,
         hiddenAfterInsert
       };
-      summary.imagePending = { marked: writes.pendingMarked };
+      summary.imagePending = { marked: writes.pendingMarkedIds.length, fetched };
       summary.presence = await applyPresence(existing.events, items, d.setEventsLive, observedAt);
     } else {
       await upsertBatches(table, result.rows, d.upsert);
@@ -233,12 +242,25 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
   };
   summary.managingRefs = { updated: managingRefs.updated };
   summary.eventWrites ??= { inserted: 0, updated: 0, stale: 0, hiddenAfterInsert: 0 };
-  summary.imagePending ??= { marked: 0 };
+  summary.imagePending ??= { marked: 0, fetched: 0 };
   summary.presence ??= { hidden: 0, revived: 0, deferred: 0, skipped: true, reason: "events not reconciled" };
   return summary;
 }
 
 type Resolved = ReturnType<typeof resolveDeps>;
+
+// Home hides events without an image and the drain runs only every 6 h, so
+// a link change this run marked pending gets its hero fetched here, as the
+// webhook path does. Capped so a bulk change cannot stall the function.
+async function fetchHeroesFor(d: Resolved, rows: readonly EventRow[], pendingIds: readonly string[]): Promise<number> {
+  const linkById = new Map(rows.map((row) => [row.webflow_item_id, row.external_link]));
+  let fetched = 0;
+  for (const id of pendingIds.slice(0, HERO_FETCH_CAP)) {
+    await d.fetchHeroImage(id, linkById.get(id) ?? null);
+    fetched += 1;
+  }
+  return fetched;
+}
 
 // A row this run inserted carried no observation an earlier unpublish could
 // have beaten (a hide that found no row left nothing behind). Re-read each

@@ -150,7 +150,7 @@ Deno.test("webhook replaces event organizers for created events and skips dangli
     loadEventImageState: async () => null,
     applyEventRows: async (rows) => {
       calls.push({ table: "events", rows });
-      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: 0 };
+      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarkedIds: [] };
     },
     fetchHeroImage: async () => "unavailable",
     waitUntil: () => {},
@@ -218,7 +218,7 @@ Deno.test("webhook-created event relies on the database default image status", a
     loadEventImageState: async () => null,
     applyEventRows: async (rows) => {
       calls.push({ table: "events", rows });
-      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: 0 };
+      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarkedIds: [] };
     },
     fetchHeroImage: async () => "unavailable",
     waitUntil: () => {},

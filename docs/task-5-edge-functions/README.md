@@ -33,7 +33,7 @@ Enable `pg_cron` and `pg_net`, then run [schedule.sql](../../supabase/functions/
 - `<PROJECT_FUNCTION_URL>` with the real Supabase project URL.
 - `<GULCH_REFRESH_SECRET_FROM_VAULT_OR_ROLLOUT_SECRET>` with a vault/secret reference or rollout-safe value.
 
-The schedule posts daily at 10:00 UTC, which is 06:00 ET during daylight time.
+The schedule posts every 6 hours on the hour. The image drain workflow (`.github/workflows/images.yml`) runs at half past so a link change the refresh marks pending is drained in the same cycle; the refresh also fetches up to 20 such heroes itself.
 
 ## 4. Register Webflow Webhooks
 

@@ -107,7 +107,7 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
     applyEventRows: async (rows) => {
       if (rows.length > 0) upsertOrder.push("events");
       upsertRows.events = [...(upsertRows.events ?? []), ...rows];
-      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: 0 };
+      return { insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarkedIds: [] };
     },
     fetchItem: async (_token, _collectionId, itemId) => eventItems.find((item) => item.id === itemId) ?? null,
     replaceAllEventOrganizers: async (rows) => {
@@ -137,7 +137,7 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
     organizers: { scanned: 1, upserted: 1, geocoded: 0, failed: 0 },
     locations: { scanned: 2, upserted: 1, geocoded: 1, failed: 0 },
     eventWrites: { inserted: 1, updated: 0, stale: 0, hiddenAfterInsert: 0 },
-    imagePending: { marked: 0 },
+    imagePending: { marked: 0, fetched: 0 },
     presence: { hidden: 0, revived: 0, deferred: 0, skipped: false },
     events: { scanned: 2, upserted: 1, geocoded: 0, failed: 0 },
     shows: { scanned: 0, upserted: 0, geocoded: 0, failed: 0 },
@@ -250,7 +250,7 @@ Deno.test("refresh-tick fully reconciles organizer relationships for unchanged r
     },
     applyEventRows: async (rows) => {
       if (rows.length > 0) upserts.push("events");
-      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: 0 };
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [] };
     },
     replaceAllEventOrganizers: async (rows) => {
       eventOrganizerReplacements.push(rows);
@@ -358,9 +358,10 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
     applyEventRows: async (rows, _observedAt, pendingIds) => {
       upsertRows.events = [...(upsertRows.events ?? []), ...rows];
       if (pendingIds.size > 0) markedPending.push([...pendingIds]);
-      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [...pendingIds] };
     },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
+    fetchHeroImage: async () => "ok",
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
@@ -402,7 +403,7 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
   ]);
   assertEquals(upsertRows.events?.every((row) => !("image_status" in (row as Record<string, unknown>))), true);
   assertEquals(markedPending, [["changed-link-event"]]);
-  assertEquals((await response.json()).imagePending, { marked: 1 });
+  assertEquals((await response.json()).imagePending, { marked: 1, fetched: 1 });
 });
 
 Deno.test("refresh-tick marks image pending when an existing event link is newly set or cleared", async () => {
@@ -457,9 +458,10 @@ Deno.test("refresh-tick marks image pending when an existing event link is newly
     upsert: async () => {},
     applyEventRows: async (rows, _observedAt, pendingIds) => {
       if (pendingIds.size > 0) markedPending.push([...pendingIds]);
-      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [...pendingIds] };
     },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
+    fetchHeroImage: async () => "ok",
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
@@ -471,7 +473,7 @@ Deno.test("refresh-tick marks image pending when an existing event link is newly
 
   assertEquals(response.status, 200);
   assertEquals(markedPending, [["newly-set-link-event", "cleared-link-event"]]);
-  assertEquals(summary.imagePending, { marked: 2 });
+  assertEquals(summary.imagePending, { marked: 2, fetched: 2 });
 });
 
 Deno.test("refresh-tick does not mark image pending when changed event links are unchanged", async () => {
@@ -511,9 +513,10 @@ Deno.test("refresh-tick does not mark image pending when changed event links are
     upsert: async () => {},
     applyEventRows: async (rows, _observedAt, pendingIds) => {
       if (pendingIds.size > 0) markedPending.push([...pendingIds]);
-      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [...pendingIds] };
     },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
+    fetchHeroImage: async () => "ok",
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
@@ -525,5 +528,5 @@ Deno.test("refresh-tick does not mark image pending when changed event links are
 
   assertEquals(response.status, 200);
   assertEquals(markedPending, []);
-  assertEquals(summary.imagePending, { marked: 0 });
+  assertEquals(summary.imagePending, { marked: 0, fetched: 0 });
 });

@@ -49,7 +49,7 @@ function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
     },
     applyEventRows: async (rows, observedAt, pendingIds) => {
       rec.writes.push({ rows: rows as readonly Record<string, unknown>[], observedAt, pendingIds: [...pendingIds] });
-      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+      return { insertedIds: [], updated: rows.length, stale: 0, pendingMarkedIds: [...pendingIds] };
     },
     replaceEventOrganizers: async (eventId, _rows, _known, observedAt) => {
       rec.orgReplacements.push({ eventId, observedAt });
@@ -157,7 +157,7 @@ Deno.test("brand-new event with no row yet is inserted and fetches its hero imag
     loadEventImageState: async () => null,
     applyEventRows: async (rows, observedAt, pendingIds) => {
       rec.writes.push({ rows: rows as readonly Record<string, unknown>[], observedAt, pendingIds: [...pendingIds] });
-      return { insertedIds: ["event-123"], updated: 0, stale: 0, pendingMarked: 0 };
+      return { insertedIds: ["event-123"], updated: 0, stale: 0, pendingMarkedIds: [] };
     }
   })(post({ triggerType: "collection_item_created", payload: { collectionId: EVENTS, id: "event-123" } }));
 
@@ -178,7 +178,7 @@ Deno.test("brand-new event unpublished before its insert landed is hidden right 
     now: () => (clock++ === 0 ? NOW : LATER),
     loadEventImageState: async () => null,
     fetchLiveItemFn: async () => (++fetches === 1 ? eventItem : null),
-    applyEventRows: async () => ({ insertedIds: ["event-123"], updated: 0, stale: 0, pendingMarked: 0 })
+    applyEventRows: async () => ({ insertedIds: ["event-123"], updated: 0, stale: 0, pendingMarkedIds: [] })
   })(publishEvent());
 
   assertEquals(await response.json(), { ok: true, hidden: 1 });
@@ -218,7 +218,7 @@ Deno.test("re-published event with an unchanged link and a failed image is left 
 Deno.test("publish whose observation lost to a newer write stops without touching organizers or the image", async () => {
   const rec = record();
   const response = await handlerWith(rec, {
-    applyEventRows: async () => ({ insertedIds: [], updated: 0, stale: 1, pendingMarked: 0 }),
+    applyEventRows: async () => ({ insertedIds: [], updated: 0, stale: 1, pendingMarkedIds: [] }),
     loadEventImageState: async () => ({ image_status: "ok", external_link: "https://www.instagram.com/p/old/" })
   })(publishEvent());
 

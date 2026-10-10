@@ -195,7 +195,8 @@ export type EventWriteResult = {
   insertedIds: readonly string[];
   updated: number;
   stale: number;
-  pendingMarked: number;
+  // Existing rows whose link changed and were reset to pending in this write.
+  pendingMarkedIds: readonly string[];
 };
 
 // New rows are inserted as observed (a row that appears meanwhile wins by
@@ -211,7 +212,7 @@ export async function applyEventRows(
   const insertedIds = await insertEventsIfAbsent(client, rows, observedAt);
   let updated = 0;
   let stale = 0;
-  let pendingMarked = 0;
+  const pendingMarkedIds: string[] = [];
 
   for (const row of rows) {
     if (insertedIds.has(row.webflow_item_id)) continue;
@@ -231,10 +232,10 @@ export async function applyEventRows(
       continue;
     }
     updated += 1;
-    if (markPending) pendingMarked += 1;
+    if (markPending) pendingMarkedIds.push(row.webflow_item_id);
   }
 
-  return { insertedIds: [...insertedIds], updated, stale, pendingMarked };
+  return { insertedIds: [...insertedIds], updated, stale, pendingMarkedIds };
 }
 
 async function insertEventsIfAbsent(
