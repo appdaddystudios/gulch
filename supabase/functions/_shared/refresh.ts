@@ -164,10 +164,12 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
   if (!webflowToken) throw new Error("Missing GULCH_WEBFLOW_API_KEY");
   if (!d.env("MAPBOX_TOKEN")) throw new Error("Missing MAPBOX_TOKEN");
 
-  // Taken before any Webflow read: everything this run observes is at least
-  // this new, so a webhook received later carries a newer observation and
-  // wins over this run's writes.
-  const observedAt = d.now();
+  // Stamped immediately before the events fetch (see the loop): everything
+  // this run observes about events is at least that new, so a webhook
+  // received later carries a newer observation and wins over this run's
+  // writes, while one received during the earlier loads does not needlessly
+  // beat a fresher snapshot.
+  let eventsObservedAt: string | null = null;
   const summary = {} as RefreshSummary;
   const existing = {
     organizers: await d.loadExisting("organizers"),
@@ -179,6 +181,7 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
   let knownOrganizerIds = new Set<string>();
 
   for (const table of ORDER) {
+    if (table === "events") eventsObservedAt = d.now();
     const items = await d.fetchItems(webflowToken, COLLECTIONS[table]);
     fetchedItems[table] = items;
     if (table === "organizers") knownOrganizerIds = new Set(items.map((item) => item.id));
@@ -190,7 +193,8 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
       knownOrganizerIds,
       now: d.now
     });
-    if (table === "events") {
+    if (table === "events" && eventsObservedAt !== null) {
+      const observedAt = eventsObservedAt;
       const eventRows = result.rows as EventRow[];
       const pendingIds = new Set(changedEventExternalLinkIds(eventRows, existingEventById(existing.events)));
       const writes = await d.applyEventRows(eventRows, observedAt, pendingIds);
@@ -213,7 +217,8 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
   const eventOrganizers = deriveGuardedEventOrganizers(fetchedItems.events ?? [], knownOrganizerIds, liveEventIds);
   // Replaced inside the database; events a webhook observed after this run
   // started are excluded there, in the same transaction as the clear.
-  const replaced = await d.replaceAllEventOrgs(eventOrganizers.rows, observedAt);
+  if (eventsObservedAt === null) throw new Error("events were not reconciled");
+  const replaced = await d.replaceAllEventOrgs(eventOrganizers.rows, eventsObservedAt);
   const managingRefUpdates = reconcileManagingOrganizerRefs(
     fetchedItems.locations ?? [],
     existingLocationById(existing.locations),

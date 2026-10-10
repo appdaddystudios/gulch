@@ -167,15 +167,19 @@ Deno.test("refresh hides only the guarded batch per run and reports the deferred
   assertEquals(summary.presence, { hidden: PRESENCE_GUARD_MIN, revived: 0, deferred: 5, skipped: false });
 });
 
-Deno.test("refresh takes its observation time once, before any Webflow fetch, and hands it to every event write", async () => {
+// The stamp is taken immediately before the events fetch, after the other
+// collections are loaded and fetched: earlier would be safe but needlessly
+// old, and a fresher reconcile observation would lose to a webhook write
+// that landed during those loads.
+Deno.test("refresh stamps its observation immediately before the events fetch and hands it to every event write", async () => {
   let clock = 0;
-  let clockAtFirstFetch = -1;
+  const clockAtFetch: Record<string, number> = {};
   const observedAts: string[] = [];
   const handler = createRefreshHandler(refreshDeps({
     now: () => (clock++ === 0 ? NOW : LATER),
     loadExisting: async (table) => (table === "events" ? [existingEvent("stale-row", false)] : []),
     fetchItems: async (_token, collectionId) => {
-      if (clockAtFirstFetch < 0) clockAtFirstFetch = clock;
+      clockAtFetch[collectionId] = clock;
       return collectionId === EVENTS ? [eventItem("new-row"), eventItem("stale-row", "2026-06-02T00:00:00.000Z")] : [];
     },
     applyEventRows: async (rows, observedAt, pendingIds) => {
@@ -190,7 +194,8 @@ Deno.test("refresh takes its observation time once, before any Webflow fetch, an
 
   await handler(refreshRequest());
 
-  assertEquals(clockAtFirstFetch, 1);
+  assertEquals(clockAtFetch[ORGANIZERS], 0);
+  assertEquals(clockAtFetch[EVENTS], 1);
   assertEquals(observedAts, [NOW, NOW]);
 });
 
