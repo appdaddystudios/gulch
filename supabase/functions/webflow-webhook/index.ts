@@ -171,9 +171,22 @@ async function upsertLiveItem(d: Resolved, table: CollectionName, collectionId: 
   await d.upsert(table, [row]);
   if (table === "events") {
     await d.replaceEventOrgs(item.id, deriveEventOrganizers(item), knownOrganizerIds);
+    if (await hiddenSinceFetch(d, webflowToken, collectionId, item.id)) return jsonResponse({ ok: true, hidden: 1 });
     await scheduleHeroImage(d, item.id, imageBefore, "external_link" in row ? row.external_link : null);
   }
   return jsonResponse({ ok: true });
+}
+
+// The upsert wrote is_live = true from an item fetched several reads earlier.
+// An unpublish delivered inside that window already wrote false, and the
+// upsert revived it. Re-read Webflow after writing: an unpublish before this
+// read shows as "not live" and is applied here; one after it lands after the
+// upsert anyway. This path only ever hides, so it cannot revive.
+async function hiddenSinceFetch(d: Resolved, token: string, collectionId: string, itemId: string): Promise<boolean> {
+  const stillLive = await d.fetchItem(token, collectionId, itemId);
+  if (stillLive) return false;
+  await d.setEventsLive([itemId], false);
+  return true;
 }
 
 // Home hides events without an image and the images job runs only every

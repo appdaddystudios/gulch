@@ -6,6 +6,7 @@ import { assertEquals, envelope } from "./helpers.ts";
 
 const EVENTS = "6845d39c294d60e4c197cee9";
 const LOCATIONS = "6843bee91e942f36fd3adc06";
+const ORGANIZERS = "6a430e64b51f80db57a22b3c";
 const NOW = "2026-10-10T12:00:00.000Z";
 
 const eventItem = {
@@ -149,6 +150,46 @@ Deno.test("re-published event with an unchanged link and a failed image is left 
 
   assertEquals(rec.pendingMarks, []);
   assertEquals(rec.heroFetches, []);
+});
+
+// A publish handler holds an item fetched several reads before its upsert.
+// An unpublish delivered inside that window already wrote is_live = false;
+// the upsert must not be the last word. The handler re-reads Webflow after
+// writing and hides again when the item is no longer live.
+Deno.test("published event unpublished while the handler ran is hidden again, not revived", async () => {
+  const rec = record();
+  let fetches = 0;
+  const response = await handlerWith(rec, {
+    fetchLiveItemFn: async () => {
+      fetches += 1;
+      return fetches === 1 ? eventItem : null;
+    }
+  })(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+
+  assertEquals(await response.json(), { ok: true, hidden: 1 });
+  assertEquals(fetches, 2);
+  assertEquals(rec.upserts.length, 1);
+  assertEquals(rec.liveCalls, [{ ids: ["event-123"], isLive: false }]);
+  assertEquals(rec.heroFetches, []);
+});
+
+Deno.test("published event still live on re-read stays live and only events are re-read", async () => {
+  const rec = record();
+  let fetches = 0;
+  const handler = handlerWith(rec, {
+    fetchLiveItemFn: async () => {
+      fetches += 1;
+      return eventItem;
+    }
+  });
+
+  await handler(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+  assertEquals(fetches, 2);
+  assertEquals(rec.liveCalls, []);
+
+  fetches = 0;
+  await handler(post({ triggerType: "collection_item_published", payload: { collectionId: ORGANIZERS, id: "organizer-1" } }));
+  assertEquals(fetches, 1);
 });
 
 Deno.test("published item that is not live on Webflow is skipped", async () => {
