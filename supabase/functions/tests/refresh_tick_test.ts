@@ -104,6 +104,11 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
       if (rows.length > 0) upsertOrder.push(table);
       upsertRows[table] = [...(upsertRows[table] ?? []), ...rows];
     },
+    applyEventRows: async (rows) => {
+      if (rows.length > 0) upsertOrder.push("events");
+      upsertRows.events = [...(upsertRows.events ?? []), ...rows];
+      return { inserted: rows.length, updated: 0, stale: 0, pendingMarked: 0 };
+    },
     replaceAllEventOrganizers: async (rows) => {
       eventOrganizerReplacements.push(rows);
       return { inserted: rows.length };
@@ -130,6 +135,7 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
   assertEquals(summary, {
     organizers: { scanned: 1, upserted: 1, geocoded: 0, failed: 0 },
     locations: { scanned: 2, upserted: 1, geocoded: 1, failed: 0 },
+    eventWrites: { inserted: 1, updated: 0, stale: 0 },
     imagePending: { marked: 0 },
     presence: { hidden: 0, revived: 0, skipped: false },
     events: { scanned: 2, upserted: 1, geocoded: 0, failed: 0 },
@@ -241,6 +247,10 @@ Deno.test("refresh-tick fully reconciles organizer relationships for unchanged r
     upsert: async (table, rows) => {
       if (rows.length > 0) upserts.push(table);
     },
+    applyEventRows: async (rows) => {
+      if (rows.length > 0) upserts.push("events");
+      return { inserted: 0, updated: rows.length, stale: 0, pendingMarked: 0 };
+    },
     replaceAllEventOrganizers: async (rows) => {
       eventOrganizerReplacements.push(rows);
       return { inserted: rows.length };
@@ -344,12 +354,13 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
     upsert: async (table, rows) => {
       upsertRows[table] = [...(upsertRows[table] ?? []), ...rows];
     },
+    applyEventRows: async (rows, _observedAt, pendingIds) => {
+      upsertRows.events = [...(upsertRows.events ?? []), ...rows];
+      if (pendingIds.size > 0) markedPending.push([...pendingIds]);
+      return { inserted: 0, updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+    },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
-    markEventsImagePending: async (ids) => {
-      markedPending.push([...ids]);
-      return { updated: ids.length };
-    }
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
   const response = await handler(new Request("https://example.test", {
@@ -443,12 +454,12 @@ Deno.test("refresh-tick marks image pending when an existing event link is newly
       : [],
     geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
     upsert: async () => {},
+    applyEventRows: async (rows, _observedAt, pendingIds) => {
+      if (pendingIds.size > 0) markedPending.push([...pendingIds]);
+      return { inserted: 0, updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+    },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
-    markEventsImagePending: async (ids) => {
-      markedPending.push([...ids]);
-      return { updated: ids.length };
-    }
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
   const response = await handler(new Request("https://example.test", {
@@ -497,12 +508,12 @@ Deno.test("refresh-tick does not mark image pending when changed event links are
       : [],
     geocoder: async () => ({ latitude: null, longitude: null, status: "pending" }),
     upsert: async () => {},
+    applyEventRows: async (rows, _observedAt, pendingIds) => {
+      if (pendingIds.size > 0) markedPending.push([...pendingIds]);
+      return { inserted: 0, updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+    },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
-    markEventsImagePending: async (ids) => {
-      markedPending.push([...ids]);
-      return { updated: ids.length };
-    }
+    updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
   const response = await handler(new Request("https://example.test", {

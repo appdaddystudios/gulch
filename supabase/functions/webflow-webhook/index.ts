@@ -1,15 +1,16 @@
 import { z } from "npm:zod";
 import { constantTimeEqual, jsonResponse, verifyHmacSha256 } from "../_shared/auth.ts";
 import {
+  applyEventRows,
   createServiceClient,
   lastSyncRunStartedAt,
   loadEventImageState,
   loadKnownOrganizerIds,
-  markEventsImagePending,
   replaceEventOrganizers,
   setEventsLive,
   upsertRows,
   type EventImageState,
+  type EventWriteResult,
   type TableName
 } from "../_shared/db.ts";
 import { geocode, type GeocodeResult } from "../_shared/geocode.ts";
@@ -21,6 +22,7 @@ import {
   mapOrganizer,
   mapShow,
   type EventOrganizerRow,
+  type EventRow,
   type UpsertRow
 } from "../_shared/mappers.ts";
 import { runRefresh, type RefreshDeps, type RefreshSummary } from "../_shared/refresh.ts";
@@ -33,8 +35,12 @@ type ReplaceEventOrganizersFn = (
   rows: readonly EventOrganizerRow[],
   knownOrganizerIds: ReadonlySet<string>
 ) => Promise<{ inserted: number; skipped: number }>;
-type SetEventsLiveFn = (ids: readonly string[], isLive: boolean) => Promise<{ updated: number }>;
-type MarkEventsImagePendingFn = (ids: readonly string[]) => Promise<{ updated: number }>;
+type SetEventsLiveFn = (ids: readonly string[], isLive: boolean, observedAt: string) => Promise<{ updated: number }>;
+type ApplyEventRowsFn = (
+  rows: readonly EventRow[],
+  observedAt: string,
+  pendingIds: ReadonlySet<string>
+) => Promise<EventWriteResult>;
 
 export type WebhookDeps = {
   env?: (key: string) => string | undefined;
@@ -51,7 +57,7 @@ export type WebhookDeps = {
   refreshDeps?: RefreshDeps;
   lastSiteRefreshStartedAt?: () => Promise<string | null>;
   loadEventImageState?: (eventId: string) => Promise<EventImageState | null>;
-  markEventsImagePending?: MarkEventsImagePendingFn;
+  applyEventRows?: ApplyEventRowsFn;
   fetchHeroImage?: (eventId: string, externalLink: string | null) => Promise<HeroImageOutcome>;
   now?: () => string;
 };
@@ -138,15 +144,17 @@ function resolveDeps(deps: WebhookDeps) {
       ((eventId: string, rows: readonly EventOrganizerRow[], known: ReadonlySet<string>) =>
         replaceEventOrganizers(createServiceClient(), eventId, rows, known)),
     setEventsLive: deps.setEventsLive ??
-      ((ids: readonly string[], isLive: boolean) => setEventsLive(createServiceClient(), ids, isLive)),
+      ((ids: readonly string[], isLive: boolean, observedAt: string) =>
+        setEventsLive(createServiceClient(), ids, isLive, observedAt)),
     waitUntil: deps.waitUntil ?? defaultWaitUntil,
     runRefresh: deps.runRefresh ?? ((source: "site_publish") => runRefresh(deps.refreshDeps ?? { env, fetcher }, source)),
     lastSiteRefreshStartedAt: deps.lastSiteRefreshStartedAt ??
       (() => lastSyncRunStartedAt(createServiceClient(), "site_publish")),
     loadEventImageState: deps.loadEventImageState ??
       ((eventId: string) => loadEventImageState(createServiceClient(), eventId)),
-    markImagePending: deps.markEventsImagePending ??
-      ((ids: readonly string[]) => markEventsImagePending(createServiceClient(), ids)),
+    applyEventRows: deps.applyEventRows ??
+      ((rows: readonly EventRow[], observedAt: string, pendingIds: ReadonlySet<string>) =>
+        applyEventRows(createServiceClient(), rows, observedAt, pendingIds)),
     fetchHeroImage: deps.fetchHeroImage ??
       ((eventId: string, externalLink: string | null) => fetchHeroImage(eventId, externalLink, { fetcher })),
     now: deps.now ?? (() => new Date().toISOString())
@@ -160,55 +168,53 @@ async function upsertLiveItem(d: Resolved, table: CollectionName, collectionId: 
   if (!webflowToken) throw new Error("Missing GULCH_WEBFLOW_API_KEY");
   if (table === "locations" && !d.env("MAPBOX_TOKEN")) throw new Error("Missing MAPBOX_TOKEN");
 
+  // Observation time is taken before the fetch: the state we are about to
+  // apply is at least this new (see applyEventRows in _shared/db.ts).
+  const observedAt = d.now();
   const item = await d.fetchItem(webflowToken, collectionId, itemId);
   if (!item) return jsonResponse({ ok: true, skipped: "not live" });
 
   const knownOrganizerIds = table === "shows" ? new Set<string>() : await d.loadOrganizerIds();
+  if (table === "events") return applyEventItem(d, item, mapEvent(item), knownOrganizerIds, observedAt);
+
+  // Other tables carry no liveness or image state; a stale overlap here is
+  // repaired by the next reconcile, which compares webflow_last_updated.
   const row = await mapWebhookItem(table, item, d.geocoder, knownOrganizerIds, d.now);
-  // Read before the upsert: it keeps the image columns and advances
-  // webflow_last_updated, so a changed link is invisible afterwards.
-  const imageBefore = table === "events" ? await d.loadEventImageState(item.id) : null;
   await d.upsert(table, [row]);
-  if (table === "events") {
-    await d.replaceEventOrgs(item.id, deriveEventOrganizers(item), knownOrganizerIds);
-    if (await hiddenSinceFetch(d, webflowToken, collectionId, item.id)) return jsonResponse({ ok: true, hidden: 1 });
-    await scheduleHeroImage(d, item.id, imageBefore, "external_link" in row ? row.external_link : null);
-  }
   return jsonResponse({ ok: true });
 }
 
-// The upsert wrote is_live = true from an item fetched several reads earlier.
-// An unpublish delivered inside that window already wrote false, and the
-// upsert revived it. Re-read Webflow after writing: an unpublish before this
-// read shows as "not live" and is applied here; one after it lands after the
-// upsert anyway. This path only ever hides, so it cannot revive.
-async function hiddenSinceFetch(d: Resolved, token: string, collectionId: string, itemId: string): Promise<boolean> {
-  const stillLive = await d.fetchItem(token, collectionId, itemId);
-  if (stillLive) return false;
-  await d.setEventsLive([itemId], false);
-  return true;
-}
-
-// Home hides events without an image and the images job runs only every
-// 6 h, so fetch now when the row is new (DB default: pending), still
-// pending, or its link changed on a published edit. A changed link is
-// marked pending first so the images job retries if the fetch dies.
-async function scheduleHeroImage(
+// The event write is ordered by observation time. A handler whose snapshot
+// lost to a newer one (a later publish, or an unpublish received after this
+// fetch began) stops here: no organizers, no image reset, no hero fetch.
+async function applyEventItem(
   d: Resolved,
-  eventId: string,
-  before: EventImageState | null,
-  externalLink: string | null
-): Promise<void> {
-  const linkChanged = before !== null && (before.external_link ?? null) !== externalLink;
+  item: WebflowItem,
+  row: EventRow,
+  knownOrganizerIds: ReadonlySet<string>,
+  observedAt: string
+): Promise<Response> {
+  // Read before the write so a changed link is seen; it then rides inside
+  // the same ordered write as image_status = pending.
+  const before = await d.loadEventImageState(row.webflow_item_id);
+  const linkChanged = before !== null && (before.external_link ?? null) !== row.external_link;
+  const pendingIds = new Set(linkChanged ? [row.webflow_item_id] : []);
+
+  const write = await d.applyEventRows([row], observedAt, pendingIds);
+  if (write.stale > 0) return jsonResponse({ ok: true, stale: true });
+
+  await d.replaceEventOrgs(item.id, deriveEventOrganizers(item), knownOrganizerIds);
+  // Home hides events without an image and the images job runs only every
+  // 6 h: fetch now when the row is new, still pending, or its link changed.
   const needsFetch = before === null || before.image_status === "pending" || linkChanged;
-  if (!needsFetch) return;
-  if (linkChanged) await d.markImagePending([eventId]);
-  d.waitUntil(d.fetchHeroImage(eventId, externalLink));
+  if (needsFetch) d.waitUntil(d.fetchHeroImage(row.webflow_item_id, row.external_link));
+  return jsonResponse({ ok: true });
 }
 
 async function hideItem(d: Resolved, table: CollectionName, itemId: string): Promise<Response> {
   if (table !== "events") return jsonResponse({ ok: true, ignored: table });
-  const { updated } = await d.setEventsLive([itemId], false);
+  // Receipt time is the observation: the unpublish happened no later than now.
+  const { updated } = await d.setEventsLive([itemId], false, d.now());
   return jsonResponse({ ok: true, hidden: updated });
 }
 

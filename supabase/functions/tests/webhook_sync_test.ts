@@ -1,13 +1,17 @@
 // Trigger dispatch added for event sync: published / unpublished / deleted /
 // site_publish / changed, plus the immediate hero-image kick-off. The
 // original collection_item_created behaviour is covered by webhook_test.ts.
+//
+// Every Webflow-state write to events is ordered by observation time (see
+// applyEventRows in _shared/db.ts); these tests pin what the handler hands
+// that write and what it must not do when its observation lost.
 import { createWebhookHandler, SITE_PUBLISH_DEBOUNCE_MS, type WebhookDeps } from "../webflow-webhook/index.ts";
 import { assertEquals, envelope } from "./helpers.ts";
 
 const EVENTS = "6845d39c294d60e4c197cee9";
 const LOCATIONS = "6843bee91e942f36fd3adc06";
-const ORGANIZERS = "6a430e64b51f80db57a22b3c";
 const NOW = "2026-10-10T12:00:00.000Z";
+const LATER = "2026-10-10T12:00:05.000Z";
 
 const eventItem = {
   ...envelope,
@@ -23,15 +27,16 @@ const eventItem = {
 
 type Recorder = {
   upserts: { table: string; rows: readonly Record<string, unknown>[] }[];
-  liveCalls: { ids: readonly string[]; isLive: boolean }[];
+  writes: { rows: readonly Record<string, unknown>[]; observedAt: string; pendingIds: string[] }[];
+  liveCalls: { ids: readonly string[]; isLive: boolean; observedAt: string }[];
+  orgReplacements: string[];
   background: Promise<unknown>[];
   refreshes: string[];
   heroFetches: { eventId: string; link: string | null }[];
-  pendingMarks: string[][];
 };
 
 function record(): Recorder {
-  return { upserts: [], liveCalls: [], background: [], refreshes: [], heroFetches: [], pendingMarks: [] };
+  return { upserts: [], writes: [], liveCalls: [], orgReplacements: [], background: [], refreshes: [], heroFetches: [] };
 }
 
 function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
@@ -42,9 +47,16 @@ function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
     upsert: async (table, rows) => {
       rec.upserts.push({ table, rows: rows as readonly Record<string, unknown>[] });
     },
-    replaceEventOrganizers: async () => ({ inserted: 0, skipped: 0 }),
-    setEventsLive: async (ids, isLive) => {
-      rec.liveCalls.push({ ids, isLive });
+    applyEventRows: async (rows, observedAt, pendingIds) => {
+      rec.writes.push({ rows: rows as readonly Record<string, unknown>[], observedAt, pendingIds: [...pendingIds] });
+      return { inserted: 0, updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
+    },
+    replaceEventOrganizers: async (eventId) => {
+      rec.orgReplacements.push(eventId);
+      return { inserted: 0, skipped: 0 };
+    },
+    setEventsLive: async (ids, isLive, observedAt) => {
+      rec.liveCalls.push({ ids, isLive, observedAt });
       return { updated: ids.length };
     },
     waitUntil: (promise) => {
@@ -60,10 +72,6 @@ function handlerWith(rec: Recorder, overrides: WebhookDeps = {}) {
       rec.heroFetches.push({ eventId, link });
       return "ok";
     },
-    markEventsImagePending: async (ids) => {
-      rec.pendingMarks.push([...ids]);
-      return { updated: ids.length };
-    },
     now: () => NOW,
     ...overrides
   });
@@ -73,16 +81,28 @@ function post(body: unknown): Request {
   return new Request("https://example.test?secret=right", { method: "POST", body: JSON.stringify(body) });
 }
 
-Deno.test("published event is upserted live and its pending hero image is fetched in the background", async () => {
+const publishEvent = () => post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } });
+
+Deno.test("published event is written live, stamped with the time taken before the Webflow fetch, and its pending hero image is fetched", async () => {
   const rec = record();
-  const response = await handlerWith(rec)(post({
-    triggerType: "collection_item_published",
-    payload: { collectionId: EVENTS, id: "event-123" }
-  }));
+  let clock = 0;
+  let clockAtFetch = -1;
+  const response = await handlerWith(rec, {
+    now: () => (clock++ === 0 ? NOW : LATER),
+    fetchLiveItemFn: async () => {
+      clockAtFetch = clock;
+      return eventItem;
+    }
+  })(publishEvent());
 
   assertEquals(response.status, 200);
-  assertEquals(rec.upserts.length, 1);
-  assertEquals(rec.upserts[0]?.rows[0]?.is_live, true);
+  assertEquals(clockAtFetch, 1);
+  assertEquals(rec.writes.length, 1);
+  assertEquals(rec.writes[0]?.observedAt, NOW);
+  assertEquals(rec.writes[0]?.rows[0]?.is_live, true);
+  assertEquals(rec.writes[0]?.pendingIds, []);
+  assertEquals(rec.orgReplacements, ["event-123"]);
+  assertEquals(rec.upserts, []);
   await Promise.all(rec.background);
   assertEquals(rec.heroFetches, [{ eventId: "event-123", link: "https://www.instagram.com/p/abc/" }]);
 });
@@ -93,27 +113,27 @@ Deno.test("hero image is not fetched when the event already has one", async () =
     loadEventImageState: async () => ({ image_status: "ok", external_link: "https://www.instagram.com/p/abc/" })
   })(post({ triggerType: "collection_item_created", payload: { collectionId: EVENTS, id: "event-123" } }));
 
-  assertEquals(rec.upserts.length, 1);
+  assertEquals(rec.writes.length, 1);
+  assertEquals(rec.writes[0]?.pendingIds, []);
   assertEquals(rec.background.length, 0);
   assertEquals(rec.heroFetches, []);
-  assertEquals(rec.pendingMarks, []);
 });
 
-// The upsert keeps the image columns and advances webflow_last_updated, so a
-// changed link must be caught here against the pre-upsert row: no later
-// reconcile will see it as changed.
-Deno.test("published edit that changes external_link resets the image and fetches the new one", async () => {
+// The image state is read before the write; a changed link rides inside the
+// same ordered write as image_status = pending, so it can neither be lost
+// to the upsert nor reset a newer worker's result.
+Deno.test("published edit that changes external_link resets the image inside the ordered write and fetches the new one", async () => {
   const rec = record();
-  let upsertsWhenStateLoaded = -1;
+  let writesWhenStateLoaded = -1;
   await handlerWith(rec, {
     loadEventImageState: async () => {
-      upsertsWhenStateLoaded = rec.upserts.length;
+      writesWhenStateLoaded = rec.writes.length;
       return { image_status: "ok", external_link: "https://www.instagram.com/p/old/" };
     }
-  })(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+  })(publishEvent());
 
-  assertEquals(upsertsWhenStateLoaded, 0);
-  assertEquals(rec.pendingMarks, [["event-123"]]);
+  assertEquals(writesWhenStateLoaded, 0);
+  assertEquals(rec.writes[0]?.pendingIds, ["event-123"]);
   await Promise.all(rec.background);
   assertEquals(rec.heroFetches, [{ eventId: "event-123", link: "https://www.instagram.com/p/abc/" }]);
 });
@@ -124,20 +144,24 @@ Deno.test("published edit that removes external_link resets the image so the old
   await handlerWith(rec, {
     fetchLiveItemFn: async () => ({ ...eventItem, fieldData: fieldsWithoutLink }),
     loadEventImageState: async () => ({ image_status: "ok", external_link: "https://www.instagram.com/p/abc/" })
-  })(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+  })(publishEvent());
 
-  assertEquals(rec.pendingMarks, [["event-123"]]);
+  assertEquals(rec.writes[0]?.pendingIds, ["event-123"]);
   await Promise.all(rec.background);
   assertEquals(rec.heroFetches, [{ eventId: "event-123", link: null }]);
 });
 
-Deno.test("brand-new event with no row yet fetches its hero image without a pending reset", async () => {
+Deno.test("brand-new event with no row yet is inserted and fetches its hero image without a pending reset", async () => {
   const rec = record();
-  await handlerWith(rec, { loadEventImageState: async () => null })(
-    post({ triggerType: "collection_item_created", payload: { collectionId: EVENTS, id: "event-123" } })
-  );
+  await handlerWith(rec, {
+    loadEventImageState: async () => null,
+    applyEventRows: async (rows, observedAt, pendingIds) => {
+      rec.writes.push({ rows: rows as readonly Record<string, unknown>[], observedAt, pendingIds: [...pendingIds] });
+      return { inserted: 1, updated: 0, stale: 0, pendingMarked: 0 };
+    }
+  })(post({ triggerType: "collection_item_created", payload: { collectionId: EVENTS, id: "event-123" } }));
 
-  assertEquals(rec.pendingMarks, []);
+  assertEquals(rec.writes[0]?.pendingIds, []);
   await Promise.all(rec.background);
   assertEquals(rec.heroFetches, [{ eventId: "event-123", link: "https://www.instagram.com/p/abc/" }]);
 });
@@ -146,64 +170,38 @@ Deno.test("re-published event with an unchanged link and a failed image is left 
   const rec = record();
   await handlerWith(rec, {
     loadEventImageState: async () => ({ image_status: "failed", external_link: "https://www.instagram.com/p/abc/" })
-  })(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+  })(publishEvent());
 
-  assertEquals(rec.pendingMarks, []);
+  assertEquals(rec.writes[0]?.pendingIds, []);
   assertEquals(rec.heroFetches, []);
 });
 
-// A publish handler holds an item fetched several reads before its upsert.
-// An unpublish delivered inside that window already wrote is_live = false;
-// the upsert must not be the last word. The handler re-reads Webflow after
-// writing and hides again when the item is no longer live.
-Deno.test("published event unpublished while the handler ran is hidden again, not revived", async () => {
+// A handler whose snapshot is older than what the row already holds (a newer
+// publish, or an unpublish received after this handler's fetch began) must
+// leave nothing behind: no organizers, no image reset, no hero fetch.
+Deno.test("publish whose observation lost to a newer write stops without touching organizers or the image", async () => {
   const rec = record();
-  let fetches = 0;
   const response = await handlerWith(rec, {
-    fetchLiveItemFn: async () => {
-      fetches += 1;
-      return fetches === 1 ? eventItem : null;
-    }
-  })(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
+    applyEventRows: async () => ({ inserted: 0, updated: 0, stale: 1, pendingMarked: 0 }),
+    loadEventImageState: async () => ({ image_status: "ok", external_link: "https://www.instagram.com/p/old/" })
+  })(publishEvent());
 
-  assertEquals(await response.json(), { ok: true, hidden: 1 });
-  assertEquals(fetches, 2);
-  assertEquals(rec.upserts.length, 1);
-  assertEquals(rec.liveCalls, [{ ids: ["event-123"], isLive: false }]);
+  assertEquals(await response.json(), { ok: true, stale: true });
+  assertEquals(rec.orgReplacements, []);
+  assertEquals(rec.background.length, 0);
   assertEquals(rec.heroFetches, []);
-});
-
-Deno.test("published event still live on re-read stays live and only events are re-read", async () => {
-  const rec = record();
-  let fetches = 0;
-  const handler = handlerWith(rec, {
-    fetchLiveItemFn: async () => {
-      fetches += 1;
-      return eventItem;
-    }
-  });
-
-  await handler(post({ triggerType: "collection_item_published", payload: { collectionId: EVENTS, id: "event-123" } }));
-  assertEquals(fetches, 2);
-  assertEquals(rec.liveCalls, []);
-
-  fetches = 0;
-  await handler(post({ triggerType: "collection_item_published", payload: { collectionId: ORGANIZERS, id: "organizer-1" } }));
-  assertEquals(fetches, 1);
 });
 
 Deno.test("published item that is not live on Webflow is skipped", async () => {
   const rec = record();
-  const response = await handlerWith(rec, { fetchLiveItemFn: async () => null })(post({
-    triggerType: "collection_item_published",
-    payload: { collectionId: EVENTS, id: "event-123" }
-  }));
+  const response = await handlerWith(rec, { fetchLiveItemFn: async () => null })(publishEvent());
 
   assertEquals(await response.json(), { ok: true, skipped: "not live" });
+  assertEquals(rec.writes, []);
   assertEquals(rec.upserts, []);
 });
 
-Deno.test("unpublished and deleted events are hidden, never removed", async () => {
+Deno.test("unpublished and deleted events are hidden with the receipt time as their observation, never removed", async () => {
   const rec = record();
   const handler = handlerWith(rec);
 
@@ -219,9 +217,10 @@ Deno.test("unpublished and deleted events are hidden, never removed", async () =
   assertEquals(await unpublished.json(), { ok: true, hidden: 1 });
   assertEquals(await deleted.json(), { ok: true, hidden: 1 });
   assertEquals(rec.liveCalls, [
-    { ids: ["event-123"], isLive: false },
-    { ids: ["event-456"], isLive: false }
+    { ids: ["event-123"], isLive: false, observedAt: NOW },
+    { ids: ["event-456"], isLive: false, observedAt: NOW }
   ]);
+  assertEquals(rec.writes, []);
   assertEquals(rec.upserts, []);
 });
 
@@ -244,6 +243,7 @@ Deno.test("staged edits (collection_item_changed) do not touch the database", as
   }));
 
   assertEquals(await response.json(), { ok: true });
+  assertEquals(rec.writes, []);
   assertEquals(rec.upserts, []);
   assertEquals(rec.liveCalls, []);
 });

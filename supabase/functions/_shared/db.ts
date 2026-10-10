@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import type { CollectionName } from "./schemas.ts";
-import type { EventOrganizerRow, UpsertRow } from "./mappers.ts";
+import type { EventOrganizerRow, EventRow, UpsertRow } from "./mappers.ts";
 
 export type TableName = CollectionName | "event_organizers";
 
@@ -114,7 +114,11 @@ export async function replaceAllEventOrganizers(
 
   if (rows.length === 0) return { inserted: 0 };
 
-  const { error: insertError } = await client.from("event_organizers").insert(rows);
+  // A per-event webhook may insert the same pair between the clear above and
+  // this insert; a duplicate must not abort the run and leave the table empty.
+  const { error: insertError } = await client
+    .from("event_organizers")
+    .upsert(rows, { onConflict: "event_id,organizer_id", ignoreDuplicates: true });
   if (insertError) throw insertError;
   return { inserted: rows.length };
 }
@@ -134,23 +138,95 @@ export async function updateLocationManagingOrganizerRefs(
   return { updated: updates.length };
 }
 
+// Observation-ordered writes. Writers that mirror Webflow state into events
+// overlap freely: concurrent webhook deliveries, a site_publish reconcile
+// beside a per-item publish, the cron. Each stamps the time it observed the
+// state it is applying (fetch start for reads, receipt time for unpublish
+// webhooks) and only lands when the row holds no newer observation, so the
+// row ends at the most recently observed state, not the most recently
+// written one. A writer whose observation lost should stop there.
+function notObservedAfter(observedAt: string): string {
+  return `observed_at.is.null,observed_at.lte.${observedAt}`;
+}
+
 export async function setEventsLive(
   client: SupabaseClient,
   ids: readonly string[],
-  isLive: boolean
+  isLive: boolean,
+  observedAt: string
 ): Promise<{ updated: number }> {
   let updated = 0;
   for (let index = 0; index < ids.length; index += UPDATE_BATCH_SIZE) {
     const batch = ids.slice(index, index + UPDATE_BATCH_SIZE);
     const { data, error } = await client
       .from("events")
-      .update({ is_live: isLive })
+      .update({ is_live: isLive, observed_at: observedAt })
       .in("webflow_item_id", batch)
+      .or(notObservedAfter(observedAt))
       .select("webflow_item_id");
     if (error) throw error;
     updated += data?.length ?? 0;
   }
   return { updated };
+}
+
+export type EventWriteResult = { inserted: number; updated: number; stale: number; pendingMarked: number };
+
+// New rows are inserted as observed (a row that appears meanwhile wins by
+// being first). Existing rows take a conditional update; ids in pendingIds
+// also get image_status = pending inside that same ordered write, so a link
+// change can neither be lost to the row write nor reset a newer result.
+export async function applyEventRows(
+  client: SupabaseClient,
+  rows: readonly EventRow[],
+  observedAt: string,
+  pendingIds: ReadonlySet<string>
+): Promise<EventWriteResult> {
+  const insertedIds = await insertEventsIfAbsent(client, rows, observedAt);
+  let updated = 0;
+  let stale = 0;
+  let pendingMarked = 0;
+
+  for (const row of rows) {
+    if (insertedIds.has(row.webflow_item_id)) continue;
+    const markPending = pendingIds.has(row.webflow_item_id);
+    const fields = markPending
+      ? { ...row, observed_at: observedAt, image_status: "pending" }
+      : { ...row, observed_at: observedAt };
+    const { data, error } = await client
+      .from("events")
+      .update(fields)
+      .eq("webflow_item_id", row.webflow_item_id)
+      .or(notObservedAfter(observedAt))
+      .select("webflow_item_id");
+    if (error) throw error;
+    if ((data?.length ?? 0) === 0) {
+      stale += 1;
+      continue;
+    }
+    updated += 1;
+    if (markPending) pendingMarked += 1;
+  }
+
+  return { inserted: insertedIds.size, updated, stale, pendingMarked };
+}
+
+async function insertEventsIfAbsent(
+  client: SupabaseClient,
+  rows: readonly EventRow[],
+  observedAt: string
+): Promise<Set<string>> {
+  const inserted = new Set<string>();
+  for (let index = 0; index < rows.length; index += UPDATE_BATCH_SIZE) {
+    const batch = rows.slice(index, index + UPDATE_BATCH_SIZE).map((row) => ({ ...row, observed_at: observedAt }));
+    const { data, error } = await client
+      .from("events")
+      .upsert(batch, { onConflict: "webflow_item_id", ignoreDuplicates: true })
+      .select("webflow_item_id");
+    if (error) throw error;
+    for (const row of (data ?? []) as { webflow_item_id: string }[]) inserted.add(row.webflow_item_id);
+  }
+  return inserted;
 }
 
 export async function startSyncRun(client: SupabaseClient, source: SyncRunSource): Promise<number> {
@@ -207,18 +283,3 @@ export async function updateEventImage(
   return (data?.length ?? 0) > 0;
 }
 
-export async function markEventsImagePending(
-  client: SupabaseClient,
-  ids: readonly string[]
-): Promise<{ updated: number }> {
-  if (ids.length === 0) return { updated: 0 };
-
-  const { data, error } = await client
-    .from("events")
-    .update({ image_status: "pending" })
-    .in("webflow_item_id", [...ids])
-    .select("webflow_item_id");
-  if (error) throw error;
-
-  return { updated: data?.length ?? 0 };
-}

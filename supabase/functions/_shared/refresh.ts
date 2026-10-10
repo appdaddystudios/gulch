@@ -2,18 +2,19 @@
 // scheduled refresh-tick and the site_publish webhook so both run the same
 // code and both leave a sync_runs row behind.
 import {
+  applyEventRows,
   createServiceClient,
   existingByIdLastUpdated,
   existingEventById,
   existingLocationById,
   finishSyncRun,
   loadExistingRows,
-  markEventsImagePending,
   replaceAllEventOrganizers,
   setEventsLive,
   startSyncRun,
   updateLocationManagingOrganizerRefs,
   upsertRows,
+  type EventWriteResult,
   type ExistingRow,
   type ManagingOrganizerRefUpdate,
   type SyncRunResult,
@@ -21,7 +22,7 @@ import {
   type TableName
 } from "./db.ts";
 import { geocode, type GeocodeResult } from "./geocode.ts";
-import { type EventOrganizerRow, type UpsertRow } from "./mappers.ts";
+import { type EventOrganizerRow, type EventRow, type UpsertRow } from "./mappers.ts";
 import {
   deriveGuardedEventOrganizers,
   planPresence,
@@ -41,8 +42,12 @@ type ReplaceAllEventOrganizersFn = (rows: readonly EventOrganizerRow[]) => Promi
 type UpdateManagingOrganizerRefsFn = (
   updates: readonly ManagingOrganizerRefUpdate[]
 ) => Promise<{ updated: number }>;
-type MarkEventsImagePendingFn = (ids: readonly string[]) => Promise<{ updated: number }>;
-type SetEventsLiveFn = (ids: readonly string[], isLive: boolean) => Promise<{ updated: number }>;
+type ApplyEventRowsFn = (
+  rows: readonly EventRow[],
+  observedAt: string,
+  pendingIds: ReadonlySet<string>
+) => Promise<EventWriteResult>;
+type SetEventsLiveFn = (ids: readonly string[], isLive: boolean, observedAt: string) => Promise<{ updated: number }>;
 
 export type SyncRunsStore = {
   start: (source: SyncRunSource) => Promise<number | null>;
@@ -57,7 +62,7 @@ export type RefreshDeps = {
   upsert?: UpsertFn;
   replaceAllEventOrganizers?: ReplaceAllEventOrganizersFn;
   updateManagingOrganizerRefs?: UpdateManagingOrganizerRefsFn;
-  markEventsImagePending?: MarkEventsImagePendingFn;
+  applyEventRows?: ApplyEventRowsFn;
   setEventsLive?: SetEventsLiveFn;
   syncRuns?: SyncRunsStore;
   geocoder?: (address: string | null) => Promise<GeocodeResult>;
@@ -74,6 +79,8 @@ export type PresenceSummary = {
 export type RefreshSummary = Record<CollectionName, ReconcileSummary> & {
   eventOrganizers: { derived: number; replaced: number; skipped: number };
   managingRefs: { updated: number };
+  // stale = event rows whose observation lost to a newer write (see applyEventRows).
+  eventWrites: { inserted: number; updated: number; stale: number };
   imagePending: { marked: number };
   presence: PresenceSummary;
 };
@@ -134,10 +141,12 @@ function resolveDeps(deps: RefreshDeps) {
     updateManagingRefs: deps.updateManagingOrganizerRefs ??
       ((updates: readonly ManagingOrganizerRefUpdate[]) =>
         updateLocationManagingOrganizerRefs(createServiceClient(), updates)),
-    markImagePending: deps.markEventsImagePending ??
-      ((ids: readonly string[]) => markEventsImagePending(createServiceClient(), ids)),
+    applyEventRows: deps.applyEventRows ??
+      ((rows: readonly EventRow[], observedAt: string, pendingIds: ReadonlySet<string>) =>
+        applyEventRows(createServiceClient(), rows, observedAt, pendingIds)),
     setEventsLive: deps.setEventsLive ??
-      ((ids: readonly string[], isLive: boolean) => setEventsLive(createServiceClient(), ids, isLive)),
+      ((ids: readonly string[], isLive: boolean, observedAt: string) =>
+        setEventsLive(createServiceClient(), ids, isLive, observedAt)),
     geocoder: deps.geocoder ?? ((address: string | null) => geocode(env("MAPBOX_TOKEN") ?? "", address, fetcher)),
     now: deps.now ?? (() => new Date().toISOString())
   };
@@ -149,6 +158,10 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
   if (!webflowToken) throw new Error("Missing GULCH_WEBFLOW_API_KEY");
   if (!d.env("MAPBOX_TOKEN")) throw new Error("Missing MAPBOX_TOKEN");
 
+  // Taken before any Webflow read: everything this run observes is at least
+  // this new, so a webhook received later carries a newer observation and
+  // wins over this run's writes.
+  const observedAt = d.now();
   const summary = {} as RefreshSummary;
   const existing = {
     organizers: await d.loadExisting("organizers"),
@@ -171,13 +184,15 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
       knownOrganizerIds,
       now: d.now
     });
-    await upsertBatches(table, result.rows, d.upsert);
-
     if (table === "events") {
-      const imagePendingIds = changedEventExternalLinkIds(result.rows, existingEventById(existing.events));
-      const imagePending = imagePendingIds.length > 0 ? await d.markImagePending(imagePendingIds) : { updated: 0 };
-      summary.imagePending = { marked: imagePending.updated };
-      summary.presence = await applyPresence(existing.events, items, d.setEventsLive);
+      const eventRows = result.rows as EventRow[];
+      const pendingIds = new Set(changedEventExternalLinkIds(eventRows, existingEventById(existing.events)));
+      const writes = await d.applyEventRows(eventRows, observedAt, pendingIds);
+      summary.eventWrites = { inserted: writes.inserted, updated: writes.updated, stale: writes.stale };
+      summary.imagePending = { marked: writes.pendingMarked };
+      summary.presence = await applyPresence(existing.events, items, d.setEventsLive, observedAt);
+    } else {
+      await upsertBatches(table, result.rows, d.upsert);
     }
     summary[table] = result.summary;
   }
@@ -198,6 +213,7 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
     skipped: eventOrganizers.skipped
   };
   summary.managingRefs = { updated: managingRefs.updated };
+  summary.eventWrites ??= { inserted: 0, updated: 0, stale: 0 };
   summary.imagePending ??= { marked: 0 };
   summary.presence ??= { hidden: 0, revived: 0, skipped: true, reason: "events not reconciled" };
   return summary;
@@ -206,11 +222,12 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
 async function applyPresence(
   existingEvents: readonly ExistingRow[],
   liveItems: readonly WebflowItem[],
-  setLive: SetEventsLiveFn
+  setLive: SetEventsLiveFn,
+  observedAt: string
 ): Promise<PresenceSummary> {
   const plan = planPresence(existingEvents, new Set(liveItems.map((item) => item.id)));
-  const hidden = plan.toHide.length > 0 ? await setLive(plan.toHide, false) : { updated: 0 };
-  const revived = plan.toRevive.length > 0 ? await setLive(plan.toRevive, true) : { updated: 0 };
+  const hidden = plan.toHide.length > 0 ? await setLive(plan.toHide, false, observedAt) : { updated: 0 };
+  const revived = plan.toRevive.length > 0 ? await setLive(plan.toRevive, true, observedAt) : { updated: 0 };
   if (plan.skipped) console.warn(`presence pass skipped: ${plan.reason}`);
   return plan.skipped
     ? { hidden: hidden.updated, revived: revived.updated, skipped: true, reason: plan.reason }

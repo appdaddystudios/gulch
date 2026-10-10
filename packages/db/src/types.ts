@@ -136,6 +136,7 @@ export type Database = {
           readonly sponsored: boolean;
           readonly is_video: boolean;
           readonly is_live: boolean;
+          readonly observed_at: string | null;
           readonly webflow_last_updated: string | null;
           readonly created_at: string;
           readonly updated_at: string;
@@ -158,6 +159,7 @@ export type Database = {
           readonly sponsored?: boolean;
           readonly is_video?: boolean;
           readonly is_live?: boolean;
+          readonly observed_at?: string | null;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
           readonly updated_at?: string;
@@ -180,6 +182,7 @@ export type Database = {
           readonly sponsored?: boolean;
           readonly is_video?: boolean;
           readonly is_live?: boolean;
+          readonly observed_at?: string | null;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
           readonly updated_at?: string;
