@@ -145,7 +145,7 @@ async function defaultUpload(eventId: string, bytes: Uint8Array, contentType: st
 }
 
 function stale(eventId: string): "stale" {
-  console.warn(`Hero image for ${eventId} skipped: external_link changed while fetching`);
+  console.warn(`Hero image for ${eventId} skipped: superseded by a newer result`);
   return "stale";
 }
 

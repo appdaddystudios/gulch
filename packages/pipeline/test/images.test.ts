@@ -265,7 +265,7 @@ describe("runImages", () => {
       logger: { info: (message) => logs.push(message), error: () => undefined }
     });
 
-    expect(logs).toEqual(["Image for moved skipped: external_link changed while fetching"]);
+    expect(logs).toEqual(["Image for moved skipped: superseded by a newer result"]);
     expect(summary).toEqual({ scanned: 1, fetched: 0, unavailable: 0, failed: 0, skipped: 1 });
   });
 

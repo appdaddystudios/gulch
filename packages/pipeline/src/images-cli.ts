@@ -26,6 +26,7 @@ type ImagesFilterBuilder = {
 
 type ImagesUpdateBuilder = {
   readonly eq: (column: "webflow_item_id" | "external_link", value: string) => ImagesUpdateBuilder;
+  readonly neq: (column: "image_status", value: string) => ImagesUpdateBuilder;
   readonly is: (column: "external_link", value: null) => ImagesUpdateBuilder;
   readonly select: (columns: "webflow_item_id") => PromiseLike<{
     readonly data: readonly { readonly webflow_item_id: string }[] | null;
@@ -128,8 +129,11 @@ export function createImagesDbClient(supabase: SupabaseImagesClient): ImagesDbCl
     // result. Resolves false when no row matched.
     async updateEventImage(id, fields, expectedExternalLink) {
       const base = supabase.from("events").update(fields).eq("webflow_item_id", id);
-      const guarded =
+      const byLink =
         expectedExternalLink === null ? base.is("external_link", null) : base.eq("external_link", expectedExternalLink);
+      // A failure says the attempt failed, not that the stored hero is wrong:
+      // a slower same-link worker must never demote an ok row.
+      const guarded = fields.image_status === "ok" ? byLink : byLink.neq("image_status", "ok");
       const result = await guarded.select("webflow_item_id");
 
       if (result.error) {

@@ -105,11 +105,18 @@ export async function replaceEventOrganizers(
   return { inserted: guardedRows.length, skipped };
 }
 
+// keepEventIds: events a webhook observed after the calling run started.
+// Their relationships are newer than the run's snapshot and are left alone;
+// the caller passes rows that already exclude them.
 export async function replaceAllEventOrganizers(
   client: SupabaseClient,
-  rows: readonly EventOrganizerRow[]
+  rows: readonly EventOrganizerRow[],
+  keepEventIds: readonly string[] = []
 ): Promise<{ inserted: number }> {
-  const { error: deleteError } = await client.from("event_organizers").delete().not("event_id", "is", null);
+  const clear = client.from("event_organizers").delete().not("event_id", "is", null);
+  const { error: deleteError } = await (keepEventIds.length > 0
+    ? clear.not("event_id", "in", `(${keepEventIds.join(",")})`)
+    : clear);
   if (deleteError) throw deleteError;
 
   if (rows.length === 0) return { inserted: 0 };
@@ -168,6 +175,12 @@ export async function setEventsLive(
     updated += data?.length ?? 0;
   }
   return { updated };
+}
+
+export async function loadEventIdsObservedAfter(client: SupabaseClient, observedAt: string): Promise<string[]> {
+  const { data, error } = await client.from("events").select("webflow_item_id").gt("observed_at", observedAt);
+  if (error) throw error;
+  return ((data ?? []) as { webflow_item_id: string }[]).map((row) => row.webflow_item_id);
 }
 
 export type EventWriteResult = { inserted: number; updated: number; stale: number; pendingMarked: number };
@@ -275,9 +288,12 @@ export async function updateEventImage(
   expectedExternalLink: string | null
 ): Promise<boolean> {
   const base = client.from("events").update(fields).eq("webflow_item_id", eventId);
-  const guarded = expectedExternalLink === null
+  const byLink = expectedExternalLink === null
     ? base.is("external_link", null)
     : base.eq("external_link", expectedExternalLink);
+  // A failure says the attempt failed, not that the stored hero is wrong: a
+  // slower same-link worker must never demote an ok row.
+  const guarded = fields.image_status === "ok" ? byLink : byLink.neq("image_status", "ok");
   const { data, error } = await guarded.select("webflow_item_id");
   if (error) throw error;
   return (data?.length ?? 0) > 0;

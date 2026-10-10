@@ -104,7 +104,7 @@ async function processEvent(
   const write = (fields: EventImageUpdate): Promise<boolean> =>
     options.db.updateEventImage(event.webflow_item_id, fields, event.external_link);
   const stale = (): void => {
-    options.logger?.info(`Image for ${event.webflow_item_id} skipped: external_link changed while fetching`);
+    options.logger?.info(`Image for ${event.webflow_item_id} skipped: superseded by a newer result`);
     summary.skipped += 1;
   };
 

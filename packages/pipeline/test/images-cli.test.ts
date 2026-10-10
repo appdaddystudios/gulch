@@ -18,6 +18,7 @@ type FakeFilterBuilder = {
 
 type FakeUpdateBuilder = {
   readonly eq: (column: string, value: string) => FakeUpdateBuilder;
+  readonly neq: (column: string, value: string) => FakeUpdateBuilder;
   readonly is: (column: string, value: null) => FakeUpdateBuilder;
   readonly select: (columns: string) => Promise<{
     readonly data: readonly { readonly webflow_item_id: string }[] | null;
@@ -90,6 +91,7 @@ beforeEach(() => {
   refreshPages = [[]];
   const updateBuilder = (values: unknown, filters: readonly string[]): FakeUpdateBuilder => ({
     eq: (column, value) => updateBuilder(values, [...filters, `${column}:eq:${value}`]),
+    neq: (column, value) => updateBuilder(values, [...filters, `${column}:neq:${value}`]),
     is: (column, value) => updateBuilder(values, [...filters, `${column}:is:${String(value)}`]),
     select: async () => {
       updates.push({ values, filters });
@@ -225,7 +227,7 @@ describe("images CLI adapters", () => {
           image_status: "unavailable",
           image_fetched_at: "2026-06-30T12:00:00.000Z"
         },
-        filters: ["webflow_item_id:eq:non-ig-event", "external_link:eq:https://example.com/event"]
+        filters: ["webflow_item_id:eq:non-ig-event", "external_link:eq:https://example.com/event", "image_status:neq:ok"]
       }
     ]);
     expect(uploads).toEqual([
@@ -249,8 +251,31 @@ describe("images CLI adapters", () => {
     expect(updates).toEqual([
       {
         values: { image_status: "failed", image_fetched_at: "2026-06-30T12:00:00.000Z" },
-        filters: ["webflow_item_id:eq:moved", "external_link:is:null"]
+        filters: ["webflow_item_id:eq:moved", "external_link:is:null", "image_status:neq:ok"]
       }
+    ]);
+  });
+
+  // Two same-link workers (webhook + scheduled job) can overlap; a failure
+  // is evidence of a transient problem, never that the stored hero is wrong,
+  // so a non-ok outcome must not replace an ok one.
+  it("lets an ok write through unguarded but never demotes an ok row with failed or unavailable", async () => {
+    const { createImagesDbClient } = await import("../src/images-cli");
+    const db = createImagesDbClient(fakeSupabase);
+
+    await db.updateEventImage(
+      "e",
+      { image_url: "https://cdn.test/e.jpg?v=1", image_status: "ok", image_checksum: "1", image_fetched_at: "2026-06-30T12:00:00.000Z" },
+      "https://instagram.com/p/1"
+    );
+    updateMatched = false;
+    await expect(
+      db.updateEventImage("e", { image_url: null, image_status: "unavailable", image_fetched_at: "2026-06-30T12:00:01.000Z" }, "https://instagram.com/p/1")
+    ).resolves.toBe(false);
+
+    expect(updates.map((update) => update.filters)).toEqual([
+      ["webflow_item_id:eq:e", "external_link:eq:https://instagram.com/p/1"],
+      ["webflow_item_id:eq:e", "external_link:eq:https://instagram.com/p/1", "image_status:neq:ok"]
     ]);
   });
 

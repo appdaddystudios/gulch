@@ -166,6 +166,42 @@ Deno.test("brand-new event with no row yet is inserted and fetches its hero imag
   assertEquals(rec.heroFetches, [{ eventId: "event-123", link: "https://www.instagram.com/p/abc/" }]);
 });
 
+// A brand-new row carries no observation an earlier unpublish could have
+// beaten: a hide that arrived before the insert matched nothing. After an
+// insert the handler re-reads Webflow once, with a fresh observation, and
+// hides if the item is already gone. Updated rows need no re-read.
+Deno.test("brand-new event unpublished before its insert landed is hidden right after the insert", async () => {
+  const rec = record();
+  let fetches = 0;
+  let clock = 0;
+  const response = await handlerWith(rec, {
+    now: () => (clock++ === 0 ? NOW : LATER),
+    loadEventImageState: async () => null,
+    fetchLiveItemFn: async () => (++fetches === 1 ? eventItem : null),
+    applyEventRows: async () => ({ inserted: 1, updated: 0, stale: 0, pendingMarked: 0 })
+  })(publishEvent());
+
+  assertEquals(await response.json(), { ok: true, hidden: 1 });
+  assertEquals(fetches, 2);
+  assertEquals(rec.liveCalls, [{ ids: ["event-123"], isLive: false, observedAt: LATER }]);
+  assertEquals(rec.orgReplacements, []);
+  assertEquals(rec.heroFetches, []);
+});
+
+Deno.test("updated event is written from a single Webflow read", async () => {
+  const rec = record();
+  let fetches = 0;
+  await handlerWith(rec, {
+    fetchLiveItemFn: async () => {
+      fetches += 1;
+      return eventItem;
+    }
+  })(publishEvent());
+
+  assertEquals(fetches, 1);
+  assertEquals(rec.liveCalls, []);
+});
+
 Deno.test("re-published event with an unchanged link and a failed image is left to the images job", async () => {
   const rec = record();
   await handlerWith(rec, {

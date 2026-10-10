@@ -175,7 +175,9 @@ async function upsertLiveItem(d: Resolved, table: CollectionName, collectionId: 
   if (!item) return jsonResponse({ ok: true, skipped: "not live" });
 
   const knownOrganizerIds = table === "shows" ? new Set<string>() : await d.loadOrganizerIds();
-  if (table === "events") return applyEventItem(d, item, mapEvent(item), knownOrganizerIds, observedAt);
+  if (table === "events") {
+    return applyEventItem(d, { token: webflowToken, collectionId }, item, mapEvent(item), knownOrganizerIds, observedAt);
+  }
 
   // Other tables carry no liveness or image state; a stale overlap here is
   // repaired by the next reconcile, which compares webflow_last_updated.
@@ -189,6 +191,7 @@ async function upsertLiveItem(d: Resolved, table: CollectionName, collectionId: 
 // fetch began) stops here: no organizers, no image reset, no hero fetch.
 async function applyEventItem(
   d: Resolved,
+  source: { token: string; collectionId: string },
   item: WebflowItem,
   row: EventRow,
   knownOrganizerIds: ReadonlySet<string>,
@@ -202,6 +205,9 @@ async function applyEventItem(
 
   const write = await d.applyEventRows([row], observedAt, pendingIds);
   if (write.stale > 0) return jsonResponse({ ok: true, stale: true });
+  if (write.inserted > 0 && await goneSinceInsert(d, source, row.webflow_item_id)) {
+    return jsonResponse({ ok: true, hidden: 1 });
+  }
 
   await d.replaceEventOrgs(item.id, deriveEventOrganizers(item), knownOrganizerIds);
   // Home hides events without an image and the images job runs only every
@@ -209,6 +215,16 @@ async function applyEventItem(
   const needsFetch = before === null || before.image_status === "pending" || linkChanged;
   if (needsFetch) d.waitUntil(d.fetchHeroImage(row.webflow_item_id, row.external_link));
   return jsonResponse({ ok: true });
+}
+
+// A brand-new row carries no observation an earlier unpublish could have
+// beaten: a hide that found no row left nothing behind. Re-read once after
+// inserting, with a fresh observation, and hide if the item is already gone.
+async function goneSinceInsert(d: Resolved, source: { token: string; collectionId: string }, eventId: string): Promise<boolean> {
+  const observedAt = d.now();
+  if (await d.fetchItem(source.token, source.collectionId, eventId)) return false;
+  await d.setEventsLive([eventId], false, observedAt);
+  return true;
 }
 
 async function hideItem(d: Resolved, table: CollectionName, itemId: string): Promise<Response> {

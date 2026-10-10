@@ -36,12 +36,48 @@ function refreshDeps(overrides: RefreshDeps = {}): RefreshDeps {
     applyEventRows: async (rows, _observedAt, pendingIds) =>
       ({ inserted: rows.length, updated: 0, stale: 0, pendingMarked: pendingIds.size }),
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
+    loadEventIdsObservedAfter: async () => [],
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
     setEventsLive: async (ids) => ({ updated: ids.length }),
     now: () => NOW,
     ...overrides
   };
 }
+
+const ORGANIZERS = "6a430e64b51f80db57a22b3c";
+const organizerItem: WebflowItem = {
+  ...envelope,
+  id: "org-1",
+  lastUpdated: "2026-06-01T00:00:00.000Z",
+  fieldData: { name: "Org", slug: "org" }
+};
+const eventWithOrganizer = (id: string): WebflowItem => ({
+  ...eventItem(id),
+  fieldData: { ...eventItem(id).fieldData, "additional-organizers": ["org-1"] }
+});
+
+// The row write knows when it lost to a newer observation; the full
+// organizer replacement must not undo that event's newer relationships.
+Deno.test("organizer replacement leaves alone events a webhook observed after the run started", async () => {
+  const replacements: { rows: readonly unknown[]; keep: readonly string[] }[] = [];
+  const handler = createRefreshHandler(refreshDeps({
+    fetchItems: async (_token, collectionId) => {
+      if (collectionId === ORGANIZERS) return [organizerItem];
+      if (collectionId === EVENTS) return [eventWithOrganizer("newer"), eventWithOrganizer("untouched")];
+      return [];
+    },
+    loadEventIdsObservedAfter: async (observedAt) => (observedAt === NOW ? ["newer"] : []),
+    replaceAllEventOrganizers: async (rows, keepEventIds) => {
+      replacements.push({ rows, keep: keepEventIds });
+      return { inserted: rows.length };
+    }
+  }));
+
+  const summary = await (await handler(refreshRequest())).json();
+
+  assertEquals(replacements, [{ rows: [{ event_id: "untouched", organizer_id: "org-1" }], keep: ["newer"] }]);
+  assertEquals(summary.eventOrganizers.replaced, 1);
+});
 
 const refreshRequest = () => new Request("https://example.test", { method: "POST", headers: { authorization: "Bearer right" } });
 
