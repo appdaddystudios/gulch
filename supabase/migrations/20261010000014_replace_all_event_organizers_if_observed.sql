@@ -14,6 +14,15 @@ as $$
 declare
   v_inserted integer;
 begin
+  -- Lock every event this run may touch, so a per-event replacement (which
+  -- locks its own row) is serialized with this one. A row updated while we
+  -- wait is re-checked against the predicate afterwards and drops out.
+  perform webflow_item_id
+    from public.events
+    where observed_at is null or observed_at <= p_observed_at
+    order by webflow_item_id
+    for update;
+
   delete from public.event_organizers eo
     using public.events e
     where e.webflow_item_id = eo.event_id

@@ -200,9 +200,12 @@ export type EventWriteResult = {
 };
 
 // New rows are inserted as observed (a row that appears meanwhile wins by
-// being first). Existing rows take a conditional update; ids in pendingIds
-// also get image_status = pending inside that same ordered write, so a link
-// change can neither be lost to the row write nor reset a newer result.
+// being first). Existing rows take a conditional update. Ids in pendingIds
+// are link-change candidates: the pending reset rides inside the ordered
+// write, and it is decided there against the row's current link rather than
+// the snapshot the candidates came from, so a hero completed meanwhile is
+// never reset; if the row already holds the new link the write falls back
+// to a plain ordered update.
 export async function applyEventRows(
   client: SupabaseClient,
   rows: readonly EventRow[],
@@ -216,26 +219,55 @@ export async function applyEventRows(
 
   for (const row of rows) {
     if (insertedIds.has(row.webflow_item_id)) continue;
-    const markPending = pendingIds.has(row.webflow_item_id);
-    const fields = markPending
-      ? { ...row, observed_at: observedAt, image_status: "pending" }
-      : { ...row, observed_at: observedAt };
-    const { data, error } = await client
-      .from("events")
-      .update(fields)
-      .eq("webflow_item_id", row.webflow_item_id)
-      .or(notObservedAfter(observedAt))
-      .select("webflow_item_id");
-    if (error) throw error;
-    if ((data?.length ?? 0) === 0) {
+    const outcome = await updateEventRow(client, row, observedAt, pendingIds.has(row.webflow_item_id));
+    if (outcome === "stale") {
       stale += 1;
       continue;
     }
     updated += 1;
-    if (markPending) pendingMarkedIds.push(row.webflow_item_id);
+    if (outcome === "pending") pendingMarkedIds.push(row.webflow_item_id);
   }
 
   return { insertedIds: [...insertedIds], updated, stale, pendingMarkedIds };
+}
+
+type RowOutcome = "updated" | "pending" | "stale";
+
+async function updateEventRow(
+  client: SupabaseClient,
+  row: EventRow,
+  observedAt: string,
+  resetIfLinkDiffers: boolean
+): Promise<RowOutcome> {
+  if (resetIfLinkDiffers) {
+    const reset = await orderedUpdate(client, { ...row, observed_at: observedAt, image_status: "pending" }, observedAt, {
+      linkMustDifferFrom: row.external_link
+    });
+    if (reset) return "pending";
+  }
+  const applied = await orderedUpdate(client, { ...row, observed_at: observedAt }, observedAt, {});
+  return applied ? "updated" : "stale";
+}
+
+async function orderedUpdate(
+  client: SupabaseClient,
+  fields: EventRow & { observed_at: string; image_status?: "pending" },
+  observedAt: string,
+  guard: { linkMustDifferFrom?: string | null }
+): Promise<boolean> {
+  const ordered = client
+    .from("events")
+    .update(fields)
+    .eq("webflow_item_id", fields.webflow_item_id)
+    .or(notObservedAfter(observedAt));
+  const guarded = guard.linkMustDifferFrom === undefined
+    ? ordered
+    : guard.linkMustDifferFrom === null
+      ? ordered.not("external_link", "is", null)
+      : ordered.or(`external_link.is.null,external_link.neq."${guard.linkMustDifferFrom}"`);
+  const { data, error } = await guarded.select("webflow_item_id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 async function insertEventsIfAbsent(
