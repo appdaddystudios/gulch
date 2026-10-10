@@ -253,7 +253,7 @@ Deno.test("published item that is not live on Webflow is skipped", async () => {
 
 Deno.test("unpublished and deleted events are hidden with the receipt time as their observation, never removed", async () => {
   const rec = record();
-  const handler = handlerWith(rec);
+  const handler = handlerWith(rec, { fetchLiveItemFn: async () => null });
 
   const unpublished = await handler(post({
     triggerType: "collection_item_unpublished",
@@ -272,6 +272,26 @@ Deno.test("unpublished and deleted events are hidden with the receipt time as th
   ]);
   assertEquals(rec.writes, []);
   assertEquals(rec.upserts, []);
+});
+
+// Webflow retries deliveries whose response was lost. A retried unpublish
+// after the item was republished carries a receipt time newer than the
+// publish, so it must not be trusted blind: the hide re-reads Webflow and
+// stands down when the item is live again.
+Deno.test("retried unpublish delivery after a republish is ignored because the item is live again", async () => {
+  const rec = record();
+  let fetches = 0;
+  const response = await handlerWith(rec, {
+    fetchLiveItemFn: async () => {
+      fetches += 1;
+      return eventItem;
+    }
+  })(post({ triggerType: "collection_item_unpublished", payload: { collectionId: EVENTS, id: "event-123" } }));
+
+  assertEquals(await response.json(), { ok: true, skipped: "still live" });
+  assertEquals(fetches, 1);
+  assertEquals(rec.liveCalls, []);
+  assertEquals(rec.writes, []);
 });
 
 Deno.test("unpublishing a non-event collection item is acknowledged and ignored", async () => {

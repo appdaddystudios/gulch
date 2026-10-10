@@ -114,7 +114,6 @@ Deno.test("refresh-tick upserts only changed items, geocodes only changed locati
       eventOrganizerReplacements.push(rows);
       return { inserted: rows.length };
     },
-    loadEventIdsObservedAfter: async () => [],
     updateManagingOrganizerRefs: async (updates) => {
       managingRefUpdates.push(...updates);
       return { updated: updates.length };
@@ -257,7 +256,6 @@ Deno.test("refresh-tick fully reconciles organizer relationships for unchanged r
       eventOrganizerReplacements.push(rows);
       return { inserted: rows.length };
     },
-    loadEventIdsObservedAfter: async () => [],
     updateManagingOrganizerRefs: async (updates) => {
       managingRefUpdates.push(...updates);
       return { updated: updates.length };
@@ -363,7 +361,6 @@ Deno.test("refresh-tick marks image pending separately so mixed event upserts st
       return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
     },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    loadEventIdsObservedAfter: async () => [],
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
@@ -463,7 +460,6 @@ Deno.test("refresh-tick marks image pending when an existing event link is newly
       return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
     },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    loadEventIdsObservedAfter: async () => [],
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 
@@ -518,7 +514,6 @@ Deno.test("refresh-tick does not mark image pending when changed event links are
       return { insertedIds: [], updated: rows.length, stale: 0, pendingMarked: pendingIds.size };
     },
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    loadEventIdsObservedAfter: async () => [],
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length })
   });
 

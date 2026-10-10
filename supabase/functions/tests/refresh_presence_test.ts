@@ -37,7 +37,6 @@ function refreshDeps(overrides: RefreshDeps = {}): RefreshDeps {
       ({ insertedIds: rows.map((row) => row.webflow_item_id), updated: 0, stale: 0, pendingMarked: pendingIds.size }),
     fetchItem: async (_token, _collectionId, itemId) => eventItem(itemId),
     replaceAllEventOrganizers: async (rows) => ({ inserted: rows.length }),
-    loadEventIdsObservedAfter: async () => [],
     updateManagingOrganizerRefs: async (updates) => ({ updated: updates.length }),
     setEventsLive: async (ids) => ({ updated: ids.length }),
     now: () => NOW,
@@ -57,26 +56,29 @@ const eventWithOrganizer = (id: string): WebflowItem => ({
   fieldData: { ...eventItem(id).fieldData, "additional-organizers": ["org-1"] }
 });
 
-// The row write knows when it lost to a newer observation; the full
-// organizer replacement must not undo that event's newer relationships.
-Deno.test("organizer replacement leaves alone events a webhook observed after the run started", async () => {
-  const replacements: { rows: readonly unknown[]; keep: readonly string[] }[] = [];
+// The full organizer replacement runs inside the database with the run's
+// observation time; events a webhook observed later are excluded there, in
+// the same transaction as the clear and the insert (migration 0014).
+Deno.test("full organizer replacement is handed every live relationship with the run's observation time", async () => {
+  const replacements: { rows: readonly unknown[]; observedAt: string }[] = [];
   const handler = createRefreshHandler(refreshDeps({
     fetchItems: async (_token, collectionId) => {
       if (collectionId === ORGANIZERS) return [organizerItem];
       if (collectionId === EVENTS) return [eventWithOrganizer("newer"), eventWithOrganizer("untouched")];
       return [];
     },
-    loadEventIdsObservedAfter: async (observedAt) => (observedAt === NOW ? ["newer"] : []),
-    replaceAllEventOrganizers: async (rows, keepEventIds) => {
-      replacements.push({ rows, keep: keepEventIds });
-      return { inserted: rows.length };
+    replaceAllEventOrganizers: async (rows, observedAt) => {
+      replacements.push({ rows, observedAt });
+      return { inserted: 1 };
     }
   }));
 
   const summary = await (await handler(refreshRequest())).json();
 
-  assertEquals(replacements, [{ rows: [{ event_id: "untouched", organizer_id: "org-1" }], keep: ["newer"] }]);
+  assertEquals(replacements, [{
+    rows: [{ event_id: "newer", organizer_id: "org-1" }, { event_id: "untouched", organizer_id: "org-1" }],
+    observedAt: NOW
+  }]);
   assertEquals(summary.eventOrganizers.replaced, 1);
 });
 

@@ -231,10 +231,19 @@ async function goneSinceInsert(d: Resolved, source: { token: string; collectionI
   return true;
 }
 
-async function hideItem(d: Resolved, table: CollectionName, itemId: string): Promise<Response> {
+async function hideItem(d: Resolved, table: CollectionName, collectionId: string, itemId: string): Promise<Response> {
   if (table !== "events") return jsonResponse({ ok: true, ignored: table });
+  const webflowToken = d.env("GULCH_WEBFLOW_API_KEY");
+  if (!webflowToken) throw new Error("Missing GULCH_WEBFLOW_API_KEY");
+
   // Receipt time is the observation: the unpublish happened no later than now.
-  const { updated } = await d.setEventsLive([itemId], false, d.now());
+  const observedAt = d.now();
+  // Webflow retries deliveries whose response was lost. A retried unpublish
+  // after a republish would carry a newer receipt time than the publish, so
+  // read before hiding and stand down when the item is live again.
+  if (await d.fetchItem(webflowToken, collectionId, itemId)) return jsonResponse({ ok: true, skipped: "still live" });
+
+  const { updated } = await d.setEventsLive([itemId], false, observedAt);
   return jsonResponse({ ok: true, hidden: updated });
 }
 
@@ -283,7 +292,7 @@ export function createWebhookHandler(deps: WebhookDeps = {}): (request: Request)
     const table = TABLE_BY_COLLECTION_ID[collectionId];
     if (!table) return jsonResponse({ ok: true });
 
-    return isHide ? hideItem(d, table, itemId) : upsertLiveItem(d, table, collectionId, itemId);
+    return isHide ? hideItem(d, table, collectionId, itemId) : upsertLiveItem(d, table, collectionId, itemId);
   };
 }
 

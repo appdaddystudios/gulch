@@ -127,29 +127,21 @@ export async function replaceEventOrganizers(
   return { inserted: applied ? guardedRows.length : 0, skipped, applied };
 }
 
-// keepEventIds: events a webhook observed after the calling run started.
-// Their relationships are newer than the run's snapshot and are left alone;
-// the caller passes rows that already exclude them.
+// Runs inside the database (migration 20261010000014): events a webhook
+// observed after observedAt hold newer relationships than this snapshot and
+// are left out of both the clear and the insert, in one transaction.
 export async function replaceAllEventOrganizers(
   client: SupabaseClient,
   rows: readonly EventOrganizerRow[],
-  keepEventIds: readonly string[] = []
+  observedAt: string
 ): Promise<{ inserted: number }> {
-  const clear = client.from("event_organizers").delete().not("event_id", "is", null);
-  const { error: deleteError } = await (keepEventIds.length > 0
-    ? clear.not("event_id", "in", `(${keepEventIds.join(",")})`)
-    : clear);
-  if (deleteError) throw deleteError;
-
-  if (rows.length === 0) return { inserted: 0 };
-
-  // A per-event webhook may insert the same pair between the clear above and
-  // this insert; a duplicate must not abort the run and leave the table empty.
-  const { error: insertError } = await client
-    .from("event_organizers")
-    .upsert(rows, { onConflict: "event_id,organizer_id", ignoreDuplicates: true });
-  if (insertError) throw insertError;
-  return { inserted: rows.length };
+  const { data, error } = await client.rpc("replace_all_event_organizers_if_observed", {
+    p_event_ids: rows.map((row) => row.event_id),
+    p_organizer_ids: rows.map((row) => row.organizer_id),
+    p_observed_at: observedAt
+  });
+  if (error) throw error;
+  return { inserted: typeof data === "number" ? data : 0 };
 }
 
 export async function updateLocationManagingOrganizerRefs(
@@ -197,12 +189,6 @@ export async function setEventsLive(
     updated += data?.length ?? 0;
   }
   return { updated };
-}
-
-export async function loadEventIdsObservedAfter(client: SupabaseClient, observedAt: string): Promise<string[]> {
-  const { data, error } = await client.from("events").select("webflow_item_id").gt("observed_at", observedAt);
-  if (error) throw error;
-  return ((data ?? []) as { webflow_item_id: string }[]).map((row) => row.webflow_item_id);
 }
 
 export type EventWriteResult = {

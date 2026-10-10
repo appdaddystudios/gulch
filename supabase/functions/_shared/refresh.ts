@@ -8,7 +8,6 @@ import {
   existingEventById,
   existingLocationById,
   finishSyncRun,
-  loadEventIdsObservedAfter,
   loadExistingRows,
   replaceAllEventOrganizers,
   setEventsLive,
@@ -40,11 +39,7 @@ type ExistingLoader = (table: CollectionName) => Promise<ExistingRow[]>;
 type FetchItems = (token: string, collectionId: string) => Promise<WebflowItem[]>;
 type FetchItem = (token: string, collectionId: string, itemId: string) => Promise<WebflowItem | null>;
 type UpsertFn = (table: TableName, rows: readonly UpsertRow[]) => Promise<void>;
-type ReplaceAllEventOrganizersFn = (
-  rows: readonly EventOrganizerRow[],
-  keepEventIds: readonly string[]
-) => Promise<{ inserted: number }>;
-type LoadEventIdsObservedAfterFn = (observedAt: string) => Promise<string[]>;
+type ReplaceAllEventOrganizersFn = (rows: readonly EventOrganizerRow[], observedAt: string) => Promise<{ inserted: number }>;
 type UpdateManagingOrganizerRefsFn = (
   updates: readonly ManagingOrganizerRefUpdate[]
 ) => Promise<{ updated: number }>;
@@ -68,7 +63,6 @@ export type RefreshDeps = {
   loadExisting?: ExistingLoader;
   upsert?: UpsertFn;
   replaceAllEventOrganizers?: ReplaceAllEventOrganizersFn;
-  loadEventIdsObservedAfter?: LoadEventIdsObservedAfterFn;
   updateManagingOrganizerRefs?: UpdateManagingOrganizerRefsFn;
   applyEventRows?: ApplyEventRowsFn;
   setEventsLive?: SetEventsLiveFn;
@@ -147,10 +141,8 @@ function resolveDeps(deps: RefreshDeps) {
     loadExisting: deps.loadExisting ?? defaultLoadExisting,
     upsert: deps.upsert ?? defaultUpsert,
     replaceAllEventOrgs: deps.replaceAllEventOrganizers ??
-      ((rows: readonly EventOrganizerRow[], keepEventIds: readonly string[]) =>
-        replaceAllEventOrganizers(createServiceClient(), rows, keepEventIds)),
-    loadEventIdsObservedAfter: deps.loadEventIdsObservedAfter ??
-      ((observedAt: string) => loadEventIdsObservedAfter(createServiceClient(), observedAt)),
+      ((rows: readonly EventOrganizerRow[], observedAt: string) =>
+        replaceAllEventOrganizers(createServiceClient(), rows, observedAt)),
     updateManagingRefs: deps.updateManagingOrganizerRefs ??
       ((updates: readonly ManagingOrganizerRefUpdate[]) =>
         updateLocationManagingOrganizerRefs(createServiceClient(), updates)),
@@ -218,11 +210,9 @@ async function reconcileAll(deps: RefreshDeps): Promise<RefreshSummary> {
 
   const liveEventIds = new Set((fetchedItems.events ?? []).map((item) => item.id));
   const eventOrganizers = deriveGuardedEventOrganizers(fetchedItems.events ?? [], knownOrganizerIds, liveEventIds);
-  // Events a webhook observed after this run started hold newer relationships
-  // than this snapshot; leave them out of the replacement entirely.
-  const newerIds = new Set(await d.loadEventIdsObservedAfter(observedAt));
-  const organizerRows = eventOrganizers.rows.filter((row) => !newerIds.has(row.event_id));
-  const replaced = await d.replaceAllEventOrgs(organizerRows, [...newerIds]);
+  // Replaced inside the database; events a webhook observed after this run
+  // started are excluded there, in the same transaction as the clear.
+  const replaced = await d.replaceAllEventOrgs(eventOrganizers.rows, observedAt);
   const managingRefUpdates = reconcileManagingOrganizerRefs(
     fetchedItems.locations ?? [],
     existingLocationById(existing.locations),
