@@ -36,8 +36,15 @@ create table public.sync_runs (
 alter table public.sync_runs enable row level security;
 
 -- Service role only: written by Edge Functions, read by operators.
+-- RLS policies do not grant SQL privileges, and new tables are no longer
+-- auto-exposed to the Data API roles (see auto_expose_new_tables in
+-- config.toml), so grant explicitly — table and its identity sequence.
 create policy sync_runs_all_service_role
   on public.sync_runs for all to service_role using (true) with check (true);
+
+revoke all on public.sync_runs from anon, authenticated;
+grant all on public.sync_runs to service_role;
+grant usage, select on sequence public.sync_runs_id_seq to service_role;
 
 create index sync_runs_started_at_idx
   on public.sync_runs (started_at desc);
