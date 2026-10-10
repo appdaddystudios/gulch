@@ -135,6 +135,7 @@ export type Database = {
           readonly editors_pick: boolean;
           readonly sponsored: boolean;
           readonly is_video: boolean;
+          readonly is_live: boolean;
           readonly webflow_last_updated: string | null;
           readonly created_at: string;
           readonly updated_at: string;
@@ -156,6 +157,7 @@ export type Database = {
           readonly editors_pick?: boolean;
           readonly sponsored?: boolean;
           readonly is_video?: boolean;
+          readonly is_live?: boolean;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
           readonly updated_at?: string;
@@ -177,6 +179,7 @@ export type Database = {
           readonly editors_pick?: boolean;
           readonly sponsored?: boolean;
           readonly is_video?: boolean;
+          readonly is_live?: boolean;
           readonly webflow_last_updated?: string | null;
           readonly created_at?: string;
           readonly updated_at?: string;
@@ -381,6 +384,36 @@ export type Database = {
             readonly referencedColumns: ["webflow_item_id"];
           }
         ];
+      };
+      readonly sync_runs: {
+        readonly Row: {
+          readonly id: number;
+          readonly source: "cron" | "site_publish" | "manual";
+          readonly started_at: string;
+          readonly finished_at: string | null;
+          readonly ok: boolean | null;
+          readonly summary: Json | null;
+          readonly error: string | null;
+        };
+        readonly Insert: {
+          readonly id?: never;
+          readonly source: "cron" | "site_publish" | "manual";
+          readonly started_at?: string;
+          readonly finished_at?: string | null;
+          readonly ok?: boolean | null;
+          readonly summary?: Json | null;
+          readonly error?: string | null;
+        };
+        readonly Update: {
+          readonly id?: never;
+          readonly source?: "cron" | "site_publish" | "manual";
+          readonly started_at?: string;
+          readonly finished_at?: string | null;
+          readonly ok?: boolean | null;
+          readonly summary?: Json | null;
+          readonly error?: string | null;
+        };
+        readonly Relationships: [];
       };
     };
     readonly Views: Record<string, never>;
