@@ -3,6 +3,10 @@ import { EVENT_TIME_ZONE, ymdInTimeZone } from "./format";
 // The visibility rule (docs/event-visibility): an event is current until
 // local midnight after its last day. Server and client share these helpers.
 
+const HOUR_MS = 3_600_000;
+// Grace so a rollover check runs after the clock has crossed midnight, not on it.
+export const ROLLOVER_GRACE_MS = 1_000;
+
 type VisibilityWindow = {
   readonly startAt: string;
   readonly endAt: string | null;
@@ -53,6 +57,19 @@ export const dayStartIso = (
     secondOffset === firstOffset ? firstPass : guess - secondOffset;
   return new Date(result).toISOString();
 };
+
+// Boundary of the day after `boundaryIso`. A local day is 23-25 h, so +26 h
+// always lands inside the following day.
+export const nextDayStartIso = (boundaryIso: string): string =>
+  dayStartIso(new Date(Date.parse(boundaryIso) + 26 * HOUR_MS));
+
+// Milliseconds from `nowMs` until just past the next local midnight; 0 once
+// that midnight has already passed.
+export const rolloverDelayMs = (boundaryIso: string, nowMs: number): number =>
+  Math.max(
+    0,
+    Date.parse(nextDayStartIso(boundaryIso)) - nowMs + ROLLOVER_GRACE_MS,
+  );
 
 // end_at when it parses and is not before start_at; otherwise start_at.
 export const effectiveEndAt = (event: VisibilityWindow): string => {

@@ -27,6 +27,7 @@ import { SeeMoreCard } from "../../components/SeeMoreCard";
 import { useDeckPage } from "../../hooks/useDeckPage";
 import { useEventsByIds } from "../../hooks/useEventsByIds";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
+import { useRefreshOnDayChange } from "../../hooks/useRefreshOnDayChange";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { DECK_CAP } from "../../lib/deck";
 import { isFrameInViewport, type LayoutFrame } from "../../lib/deckHint";
@@ -172,6 +173,7 @@ export default function HomeScreen() {
   const { state, refresh, refreshing } = useQuery(client, loader, {
     enabled: hydrated,
   });
+  useRefreshOnDayChange(refresh);
 
   const data: HomeData = state.status === "ready" ? state.data : EMPTY_HOME;
 

@@ -6,7 +6,10 @@ import {
   dayStartIso,
   effectiveEndAt,
   isEventCurrent,
+  nextDayStartIso,
   partitionByVisibility,
+  ROLLOVER_GRACE_MS,
+  rolloverDelayMs,
 } from "./visibility";
 
 // Local-hour reader used to pin the invariant "result is 00:00 local".
@@ -89,6 +92,50 @@ describe("dayStartIso", () => {
     const boundary = dayStartIso(new Date("2026-07-15T15:00:00Z"), "UTC");
 
     expect(boundary).toBe("2026-07-15T00:00:00.000Z");
+  });
+});
+
+describe("nextDayStartIso", () => {
+  it("steps one EST day forward from a January boundary", () => {
+    expect(nextDayStartIso("2026-01-15T05:00:00.000Z")).toBe(
+      "2026-01-16T05:00:00.000Z",
+    );
+  });
+
+  it("lands on the spring-forward day from the day before", () => {
+    expect(nextDayStartIso("2026-03-07T05:00:00.000Z")).toBe(
+      "2026-03-08T05:00:00.000Z",
+    );
+  });
+
+  it("crosses the 23 h spring-forward day into EDT", () => {
+    expect(nextDayStartIso("2026-03-08T05:00:00.000Z")).toBe(
+      "2026-03-09T04:00:00.000Z",
+    );
+  });
+
+  it("crosses the 25 h fall-back day into EST", () => {
+    expect(nextDayStartIso("2026-11-01T04:00:00.000Z")).toBe(
+      "2026-11-02T05:00:00.000Z",
+    );
+  });
+});
+
+describe("rolloverDelayMs", () => {
+  const boundary = "2026-01-15T05:00:00.000Z";
+
+  it("waits until one grace period past the next boundary", () => {
+    const oneHourBefore = Date.parse("2026-01-16T04:00:00.000Z");
+
+    expect(rolloverDelayMs(boundary, oneHourBefore)).toBe(
+      3_600_000 + ROLLOVER_GRACE_MS,
+    );
+  });
+
+  it("clamps to zero once the next boundary has passed", () => {
+    const afterNext = Date.parse("2026-01-16T09:00:00.000Z");
+
+    expect(rolloverDelayMs(boundary, afterNext)).toBe(0);
   });
 });
 

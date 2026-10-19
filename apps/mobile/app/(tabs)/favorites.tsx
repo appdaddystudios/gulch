@@ -16,6 +16,7 @@ import { Header } from "../../components/Header";
 import { HeartIcon } from "../../components/icons";
 import { Toast } from "../../components/Toast";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
+import { useRefreshOnDayChange } from "../../hooks/useRefreshOnDayChange";
 import { useSaveToast } from "../../hooks/useSaveToast";
 import { listEventsByIds, type EventListItem } from "../../lib/events";
 import { dayStartIso, partitionByVisibility } from "../../lib/visibility";
@@ -38,7 +39,8 @@ export default function FavoritesScreen() {
     (c: NonNullable<ReturnType<typeof useDbClient>>) => listEventsByIds(c, ids),
     [ids],
   );
-  const { state } = useQuery(client, loader);
+  const { state, refresh } = useQuery(client, loader);
+  useRefreshOnDayChange(refresh);
 
   return (
     <View style={styles.screen}>
