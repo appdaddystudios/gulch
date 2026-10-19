@@ -21,8 +21,10 @@ export type UseQueryResult<T> = {
   // Hard reload: enters `loading`, so consumers show their pending UI.
   readonly reload: () => void;
   // Silent reload: keeps the current data on screen, swaps it on success and
-  // leaves it untouched on failure (pull-to-refresh).
-  readonly refresh: () => void;
+  // leaves it untouched on failure (pull-to-refresh). Resolves true when this
+  // request's result landed as `ready`; false on error, when a later request
+  // superseded it, or when it did not run (no client / disabled).
+  readonly refresh: () => Promise<boolean>;
   readonly refreshing: boolean;
 };
 
@@ -79,19 +81,21 @@ export function useQuery<T>(
     // loader identity is owned by the caller (wrap in useCallback there).
   }, [client, enabled, loader]);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((): Promise<boolean> => {
     if (!client || !enabled) {
-      return;
+      return Promise.resolve(false);
     }
 
     const token = ++tokenRef.current;
     setRefreshing(true);
 
-    loader(client)
+    return loader(client)
       .then((data) => {
-        if (token === tokenRef.current) {
-          setState({ status: "ready", data });
+        if (token !== tokenRef.current) {
+          return false;
         }
+        setState({ status: "ready", data });
+        return true;
       })
       .catch((error: unknown) => {
         // Nothing to keep visible if the initial load never landed (this
@@ -103,6 +107,7 @@ export function useQuery<T>(
               : prev,
           );
         }
+        return false;
       })
       .finally(() => {
         if (token === tokenRef.current) {

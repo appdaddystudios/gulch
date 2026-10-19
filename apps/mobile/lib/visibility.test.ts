@@ -9,6 +9,7 @@ import {
   nextDayStartIso,
   partitionByVisibility,
   ROLLOVER_GRACE_MS,
+  ROLLOVER_RETRY_MS,
   rolloverDelayMs,
 } from "./visibility";
 
@@ -136,6 +137,10 @@ describe("rolloverDelayMs", () => {
     const afterNext = Date.parse("2026-01-16T09:00:00.000Z");
 
     expect(rolloverDelayMs(boundary, afterNext)).toBe(0);
+  });
+
+  it("retries a failed rollover refresh well after the grace period", () => {
+    expect(ROLLOVER_RETRY_MS).toBeGreaterThan(ROLLOVER_GRACE_MS);
   });
 });
 

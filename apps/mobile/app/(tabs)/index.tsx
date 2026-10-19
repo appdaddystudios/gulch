@@ -173,7 +173,7 @@ export default function HomeScreen() {
   const { state, refresh, refreshing } = useQuery(client, loader, {
     enabled: hydrated,
   });
-  useRefreshOnDayChange(refresh);
+  const visibilityDay = useRefreshOnDayChange(refresh);
 
   const data: HomeData = state.status === "ready" ? state.data : EMPTY_HOME;
 
@@ -330,6 +330,10 @@ export default function HomeScreen() {
         {/* The deck leads (device pass: it took the banner ad's slot); it
             renders nothing until dealt, so Trending simply moves up. */}
         <HomeDeckSection
+          // A rollover remounts the deck once per day so yesterday's cards
+          // leave even after a swipe froze it; save-driven rebuilds stay
+          // blocked by useHomeDeck's touched guard exactly as before.
+          key={visibilityDay}
           events={deckPage.events}
           savedIds={savedIds}
           // Only a page fetched with today's saved count may be dealt. While

@@ -6,6 +6,9 @@ import { EVENT_TIME_ZONE, ymdInTimeZone } from "./format";
 const HOUR_MS = 3_600_000;
 // Grace so a rollover check runs after the clock has crossed midnight, not on it.
 export const ROLLOVER_GRACE_MS = 1_000;
+// Retry cadence after a failed rollover refresh while the app stays active
+// (foregrounding also retries).
+export const ROLLOVER_RETRY_MS = 60_000;
 
 type VisibilityWindow = {
   readonly startAt: string;
