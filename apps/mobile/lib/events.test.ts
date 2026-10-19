@@ -11,6 +11,7 @@ import {
   listUpcomingEvents,
   type EventListItem,
 } from "./events";
+import { currentEventsFilter, dayStartIso } from "./visibility";
 
 type QueryResult = { data: unknown; error: unknown };
 
@@ -20,6 +21,7 @@ const makeBuilder = (result: QueryResult) => {
     "select",
     "gt",
     "gte",
+    "or",
     "eq",
     "in",
     "not",
@@ -42,7 +44,16 @@ type RecordedCall = readonly [method: string, ...args: unknown[]];
 const makeRecordingClient = (result: QueryResult) => {
   const calls: RecordedCall[] = [];
   const builder: Record<string, unknown> = {};
-  for (const method of ["select", "gte", "eq", "not", "order", "limit"]) {
+  for (const method of [
+    "select",
+    "gt",
+    "gte",
+    "or",
+    "eq",
+    "not",
+    "order",
+    "limit",
+  ]) {
     builder[method] = (...args: unknown[]) => {
       calls.push([method, ...args]);
       return builder;
@@ -183,6 +194,29 @@ describe("listUpcomingEvents", () => {
     expect(result[1]?.imageUrl).toBeNull();
   });
 
+  it("filters to events current on the Atlanta day of nowIso, soonest first", async () => {
+    const nowIso = "2026-06-30T00:00:00Z";
+    const { client, calls, tables } = makeRecordingClient({
+      data: [],
+      error: null,
+    });
+
+    await listUpcomingEvents(client, { limit: 5, nowIso });
+
+    expect(tables).toEqual(["events"]);
+    expect(calls).toEqual([
+      ["select", EVENT_SELECT],
+      ["or", currentEventsFilter(dayStartIso(new Date(nowIso)))],
+      ["order", "start_at", { ascending: true }],
+      ["limit", 5],
+    ]);
+    expect(
+      calls.some(
+        ([method, column]) => method === "gte" && column === "start_at",
+      ),
+    ).toBe(false);
+  });
+
   it("returns an empty list when data is null", async () => {
     await expect(
       listUpcomingEvents(makeClient({ data: null, error: null })),
@@ -273,6 +307,25 @@ describe("listTrendingEvents", () => {
     expect(result[0]?.saveCount).toBe(4);
   });
 
+  it("applies the day-window filter through the events embed", async () => {
+    const nowIso = "2026-06-01T00:00:00Z";
+    const { client, calls, tables } = makeRecordingClient({
+      data: [],
+      error: null,
+    });
+
+    await listTrendingEvents(client, { limit: 6, nowIso });
+
+    expect(tables).toEqual(["event_save_counts"]);
+    expect(calls).toContainEqual(["gt", "saves", 0]);
+    expect(calls).toContainEqual([
+      "or",
+      currentEventsFilter(dayStartIso(new Date(nowIso))),
+      { referencedTable: "events" },
+    ]);
+    expect(calls.some(([method]) => method === "gte")).toBe(false);
+  });
+
   it("returns an empty list when no events have saves", async () => {
     const client = makeClient({ data: null, error: null });
     await expect(
@@ -300,7 +353,10 @@ describe("listDeckEvents", () => {
     expect(tables).toEqual(["events"]);
     expect(calls).toEqual([
       ["select", EVENT_SELECT],
-      ["gte", "start_at", "2026-06-30T00:00:00Z"],
+      [
+        "or",
+        currentEventsFilter(dayStartIso(new Date("2026-06-30T00:00:00Z"))),
+      ],
       ["eq", "image_status", "ok"],
       ["not", "image_url", "is", null],
       ["order", "start_at", { ascending: true }],
@@ -324,15 +380,22 @@ describe("listDeckEvents", () => {
     expect(calls).toContainEqual(["limit", DECK_FETCH_MAX]);
   });
 
-  it("defaults to a limit of 20 and the current time", async () => {
-    const before = new Date().toISOString();
+  it("defaults to a limit of 20 and today's Atlanta day boundary", async () => {
+    const before = dayStartIso(new Date());
     const { client, calls } = makeRecordingClient({ data: [], error: null });
 
     await listDeckEvents(client);
 
-    const gte = calls.find(([method]) => method === "gte");
-    expect(gte?.[1]).toBe("start_at");
-    expect(String(gte?.[2]) >= before).toBe(true);
+    const after = dayStartIso(new Date());
+    const or = calls.find(([method]) => method === "or");
+    expect([currentEventsFilter(before), currentEventsFilter(after)]).toContain(
+      or?.[1],
+    );
+    expect(
+      calls.some(
+        ([method, column]) => method === "gte" && column === "start_at",
+      ),
+    ).toBe(false);
     expect(calls.find(([method]) => method === "limit")).toEqual(["limit", 20]);
   });
 
@@ -358,7 +421,9 @@ describe("listDeckEvents", () => {
 
   it("throws when Supabase returns an error", async () => {
     await expect(
-      listDeckEvents(makeClient({ data: null, error: new Error("rls denied") })),
+      listDeckEvents(
+        makeClient({ data: null, error: new Error("rls denied") }),
+      ),
     ).rejects.toThrow("rls denied");
   });
 });

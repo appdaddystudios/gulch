@@ -2,6 +2,7 @@ import type { DbClient } from "@gulch/db";
 import { z } from "zod";
 
 import { formatWeekRange, weekStartKey } from "./format";
+import { currentEventsFilter, dayStartIso } from "./visibility";
 
 export type EventImageStatus = "pending" | "ok" | "failed" | "unavailable";
 
@@ -130,18 +131,18 @@ export const toEventListItem = (raw: RawEvent): EventListItem => {
   const location = firstLocation(raw.locations);
   return {
     id: raw.webflow_item_id,
-  name: raw.name,
-  startAt: raw.start_at,
-  endAt: raw.end_at,
-  customTimeDescription: raw.custom_time_description ?? null,
-  imageUrl: raw.image_url,
-  imageStatus: raw.image_status,
-  ticketsRequired: raw.tickets_required,
-  editorsPick: raw.editors_pick,
-  sponsored: raw.sponsored,
-  saveCount: saveCount(raw.event_save_counts),
-  isVideo: raw.is_video,
-  externalLink: raw.external_link,
+    name: raw.name,
+    startAt: raw.start_at,
+    endAt: raw.end_at,
+    customTimeDescription: raw.custom_time_description ?? null,
+    imageUrl: raw.image_url,
+    imageStatus: raw.image_status,
+    ticketsRequired: raw.tickets_required,
+    editorsPick: raw.editors_pick,
+    sponsored: raw.sponsored,
+    saveCount: saveCount(raw.event_save_counts),
+    isVideo: raw.is_video,
+    externalLink: raw.external_link,
     organizerName: organizerName(raw.event_organizers),
     locationName: location?.name ?? null,
     latitude: location?.latitude ?? null,
@@ -154,17 +155,18 @@ type ListUpcomingOptions = {
   readonly nowIso?: string;
 };
 
-// Events starting now or later, soonest first.
+// Events still current on the Atlanta day of `nowIso` (visible until local
+// midnight after their last day), soonest first.
 export const listUpcomingEvents = async (
   client: DbClient,
   { limit = 20, nowIso }: ListUpcomingOptions = {},
 ): Promise<readonly EventListItem[]> => {
-  const startBoundary = nowIso ?? new Date().toISOString();
+  const boundary = dayStartIso(new Date(nowIso ?? Date.now()));
 
   const { data, error } = await client
     .from("events")
     .select(EVENT_SELECT)
-    .gte("start_at", startBoundary)
+    .or(currentEventsFilter(boundary))
     .order("start_at", { ascending: true })
     .limit(limit);
 
@@ -186,22 +188,22 @@ type ListDeckOptions = {
 // among the soonest ones gets a shorter deck rather than an unbounded query.
 export const DECK_FETCH_MAX = 100;
 
-// Home swipe deck: upcoming events that have a usable hero image (R7),
-// soonest first. The deck reducer drops already-saved ids AFTER this query,
-// so the row limit has to reach past them — otherwise a returning user who
-// saved the soonest events gets a short (or empty) deck while later unsaved
-// events exist.
+// Home swipe deck: current events (day-window rule) that have a usable hero
+// image (R7), soonest first. The deck reducer drops already-saved ids AFTER
+// this query, so the row limit has to reach past them — otherwise a returning
+// user who saved the soonest events gets a short (or empty) deck while later
+// unsaved events exist.
 export const listDeckEvents = async (
   client: DbClient,
   { limit = 20, nowIso, excludeCount = 0 }: ListDeckOptions = {},
 ): Promise<readonly EventListItem[]> => {
-  const startBoundary = nowIso ?? new Date().toISOString();
+  const boundary = dayStartIso(new Date(nowIso ?? Date.now()));
   const fetchLimit = Math.min(limit + excludeCount, DECK_FETCH_MAX);
 
   const { data, error } = await client
     .from("events")
     .select(EVENT_SELECT)
-    .gte("start_at", startBoundary)
+    .or(currentEventsFilter(boundary))
     .eq("image_status", "ok")
     .not("image_url", "is", null)
     .order("start_at", { ascending: true })
@@ -224,19 +226,19 @@ type ListTrendingOptions = {
   readonly nowIso?: string;
 };
 
-// Most-saved upcoming events, ranked server-side across ALL upcoming events
-// (not just the soonest page) via the event_save_counts counter table.
+// Most-saved current events (day-window rule), ranked server-side across ALL
+// current events (not just the soonest page) via the event_save_counts table.
 export const listTrendingEvents = async (
   client: DbClient,
   { limit = 6, nowIso }: ListTrendingOptions = {},
 ): Promise<readonly EventListItem[]> => {
-  const startBoundary = nowIso ?? new Date().toISOString();
+  const boundary = dayStartIso(new Date(nowIso ?? Date.now()));
 
   const { data, error } = await client
     .from("event_save_counts")
     .select(`saves, events!inner(${EVENT_FIELDS})`)
     .gt("saves", 0)
-    .gte("events.start_at", startBoundary)
+    .or(currentEventsFilter(boundary), { referencedTable: "events" })
     .order("saves", { ascending: false })
     .limit(limit);
 

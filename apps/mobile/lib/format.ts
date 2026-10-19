@@ -1,5 +1,6 @@
 // Atlanta-local by default — all Gulch events are metro Atlanta.
-const DEFAULT_TIME_ZONE = "America/New_York";
+export const EVENT_TIME_ZONE = "America/New_York";
+const DEFAULT_TIME_ZONE = EVENT_TIME_ZONE;
 
 type FormatEventDateTimeOptions = {
   readonly endAt?: string | null;
@@ -94,7 +95,7 @@ export const formatEventTimeCompact = (
   return `${weekday} ${monthDay} · ${timePart}`;
 };
 
-const ymdInTimeZone = (
+export const ymdInTimeZone = (
   date: Date,
   timeZone: string,
 ): [number, number, number] => {

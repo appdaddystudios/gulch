@@ -1,11 +1,8 @@
 import type { DbClient } from "@gulch/db";
 import { z } from "zod";
 
-import {
-  rawEventSchema,
-  toEventListItem,
-  type EventListItem,
-} from "./events";
+import { rawEventSchema, toEventListItem, type EventListItem } from "./events";
+import { currentEventsFilter, dayStartIso } from "./visibility";
 
 export type MapVenue = {
   readonly id: string;
@@ -66,23 +63,24 @@ type ListMapVenuesOptions = {
 // Page size for the range() loop below; also bounded by Supabase's max_rows.
 export const MAP_EVENT_PAGE_SIZE = 250;
 
-// Upcoming events grouped into one pin per venue. Events whose venue is
-// missing or not yet geocoded are skipped — they cannot be placed on the map.
-// Venue order follows each venue's earliest upcoming event. Pages through the
-// full upcoming set (no silent cap): a fixed limit would drop later events
-// and omit or undercount venues once the calendar outgrows it.
+// Current events (visible until local midnight after their last day) grouped
+// into one pin per venue. Events whose venue is missing or not yet geocoded
+// are skipped — they cannot be placed on the map. Venue order follows each
+// venue's earliest current event. Pages through the full current set (no
+// silent cap): a fixed limit would drop later events and omit or undercount
+// venues once the calendar outgrows it.
 export const listMapVenues = async (
   client: DbClient,
   { nowIso }: ListMapVenuesOptions = {},
 ): Promise<readonly MapVenue[]> => {
-  const startBoundary = nowIso ?? new Date().toISOString();
+  const boundary = dayStartIso(new Date(nowIso ?? Date.now()));
   const venues = new Map<string, MapVenue & { events: EventListItem[] }>();
 
   for (let from = 0; ; from += MAP_EVENT_PAGE_SIZE) {
     const { data, error } = await client
       .from("events")
       .select(MAP_EVENT_SELECT)
-      .gte("start_at", startBoundary)
+      .or(currentEventsFilter(boundary))
       .order("start_at", { ascending: true })
       // Tie-break on the primary key so pagination is stable when many
       // events share a start time.
