@@ -27,6 +27,7 @@ import { SeeMoreCard } from "../../components/SeeMoreCard";
 import { useDeckPage } from "../../hooks/useDeckPage";
 import { useEventsByIds } from "../../hooks/useEventsByIds";
 import { useDbClient, useQuery } from "../../hooks/useQuery";
+import { useRefreshOnDayChange } from "../../hooks/useRefreshOnDayChange";
 import { useSavedEvents } from "../../hooks/useSavedEvents";
 import { DECK_CAP } from "../../lib/deck";
 import { isFrameInViewport, type LayoutFrame } from "../../lib/deckHint";
@@ -172,6 +173,7 @@ export default function HomeScreen() {
   const { state, refresh, refreshing } = useQuery(client, loader, {
     enabled: hydrated,
   });
+  const visibilityDay = useRefreshOnDayChange(refresh);
 
   const data: HomeData = state.status === "ready" ? state.data : EMPTY_HOME;
 
@@ -328,6 +330,10 @@ export default function HomeScreen() {
         {/* The deck leads (device pass: it took the banner ad's slot); it
             renders nothing until dealt, so Trending simply moves up. */}
         <HomeDeckSection
+          // A rollover remounts the deck once per day so yesterday's cards
+          // leave even after a swipe froze it; save-driven rebuilds stay
+          // blocked by useHomeDeck's touched guard exactly as before.
+          key={visibilityDay}
           events={deckPage.events}
           savedIds={savedIds}
           // Only a page fetched with today's saved count may be dealt. While

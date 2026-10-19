@@ -20,6 +20,7 @@ import { EventCard } from "./EventCard";
 import { MapIcon } from "./icons";
 import { Toast } from "./Toast";
 import { useDbClient, useQuery, type QueryState } from "../hooks/useQuery";
+import { useRefreshOnDayChange } from "../hooks/useRefreshOnDayChange";
 import { useSaveToast } from "../hooks/useSaveToast";
 import { eventCardHeight } from "../lib/eventCard";
 import { listMapVenues, type MapVenue } from "../lib/mapEvents";
@@ -51,7 +52,8 @@ export function VenueMap() {
     (c: NonNullable<ReturnType<typeof useDbClient>>) => listMapVenues(c),
     [],
   );
-  const { state, reload } = useQuery(client, loader);
+  const { state, reload, refresh } = useQuery(client, loader);
+  useRefreshOnDayChange(refresh);
 
   return <Content state={state} onRetry={reload} />;
 }

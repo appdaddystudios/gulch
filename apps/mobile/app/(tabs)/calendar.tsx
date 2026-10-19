@@ -32,6 +32,7 @@ import { SearchBar } from "../../components/SearchBar";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Toast } from "../../components/Toast";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
+import { useRefreshOnDayChange } from "../../hooks/useRefreshOnDayChange";
 import { useSaveToast } from "../../hooks/useSaveToast";
 import {
   addDaysToKey,
@@ -95,7 +96,8 @@ export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const client = useDbClient();
   const loader = useCallback(loadEvents, []);
-  const { state } = useQuery(client, loader);
+  const { state, refresh } = useQuery(client, loader);
+  useRefreshOnDayChange(refresh);
   const { isSaved, toggle, toastVisible, toastNonce, dismissToast } =
     useSaveToast();
 

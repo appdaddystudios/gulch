@@ -5,17 +5,23 @@ import {
   MAP_EVENT_SELECT,
   listMapVenues,
 } from "./mapEvents";
+import { currentEventsFilter, dayStartIso } from "./visibility";
 
 type QueryResult = { data: unknown; error: unknown };
 
-// Serves one result per query execution and records the requested ranges,
-// so pagination behavior is observable.
+// Serves one result per query execution and records the requested ranges
+// (pagination) and filter calls (query shape), so both are observable.
+type RecordedCall = readonly [method: string, ...args: unknown[]];
 const makePagedClient = (pages: readonly QueryResult[]) => {
   const ranges: Array<readonly [number, number]> = [];
+  const calls: RecordedCall[] = [];
   let call = 0;
   const builder: Record<string, unknown> = {};
-  for (const method of ["select", "gte", "order"]) {
-    builder[method] = () => builder;
+  for (const method of ["select", "gte", "or", "order"]) {
+    builder[method] = (...args: unknown[]) => {
+      calls.push([method, ...args]);
+      return builder;
+    };
   }
   builder.range = (from: number, to: number) => {
     ranges.push([from, to]);
@@ -23,7 +29,7 @@ const makePagedClient = (pages: readonly QueryResult[]) => {
   };
   builder.then = (resolve: (value: QueryResult) => unknown) =>
     resolve(pages[Math.min(call++, pages.length - 1)] as QueryResult);
-  return { client: { from: () => builder } as never, ranges };
+  return { client: { from: () => builder } as never, ranges, calls };
 };
 
 const makeClient = (result: QueryResult) => makePagedClient([result]).client;
@@ -75,6 +81,19 @@ describe("MAP_EVENT_SELECT", () => {
 });
 
 describe("listMapVenues", () => {
+  it("filters to events current on the Atlanta day of nowIso", async () => {
+    const nowIso = "2026-08-01T00:00:00Z";
+    const { client, calls } = makePagedClient([{ data: [], error: null }]);
+
+    await listMapVenues(client, { nowIso });
+
+    expect(calls).toContainEqual([
+      "or",
+      currentEventsFilter(dayStartIso(new Date(nowIso))),
+    ]);
+    expect(calls.some(([method]) => method === "gte")).toBe(false);
+  });
+
   it("groups events sharing a venue into one pin, keeping start order", async () => {
     const rows = [
       makeRow("evt-1", "2026-08-01T00:00:00Z", venueA),

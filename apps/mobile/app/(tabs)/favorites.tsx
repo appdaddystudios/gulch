@@ -16,8 +16,10 @@ import { Header } from "../../components/Header";
 import { HeartIcon } from "../../components/icons";
 import { Toast } from "../../components/Toast";
 import { useDbClient, useQuery, type QueryState } from "../../hooks/useQuery";
+import { useRefreshOnDayChange } from "../../hooks/useRefreshOnDayChange";
 import { useSaveToast } from "../../hooks/useSaveToast";
 import { listEventsByIds, type EventListItem } from "../../lib/events";
+import { dayStartIso, partitionByVisibility } from "../../lib/visibility";
 import { color, font, space } from "../../theme";
 
 type FavoritesSection = {
@@ -37,7 +39,8 @@ export default function FavoritesScreen() {
     (c: NonNullable<ReturnType<typeof useDbClient>>) => listEventsByIds(c, ids),
     [ids],
   );
-  const { state } = useQuery(client, loader);
+  const { state, refresh } = useQuery(client, loader);
+  useRefreshOnDayChange(refresh);
 
   return (
     <View style={styles.screen}>
@@ -119,18 +122,14 @@ function Body({
     );
   }
 
+  // An event stays Upcoming until Atlanta midnight after its last day.
   // listEventsByIds returns ascending by start time; Past reads best most
   // recent first.
-  const now = Date.now();
-  const upcoming = state.data.filter(
-    (event) => new Date(event.startAt).getTime() >= now,
-  );
-  const past = state.data
-    .filter((event) => new Date(event.startAt).getTime() < now)
-    .reverse();
+  const boundary = dayStartIso(new Date());
+  const { current, past } = partitionByVisibility(state.data, boundary);
   const sections: FavoritesSection[] = [
-    { title: "Upcoming", data: upcoming },
-    { title: "Past", data: past },
+    { title: "Upcoming", data: current },
+    { title: "Past", data: [...past].reverse() },
   ];
 
   return (
